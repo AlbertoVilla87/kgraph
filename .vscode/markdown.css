@@ -1,0 +1,42 @@
+/* Custom CSS for markdown preview with full width */
+body {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 20px !important;
+  box-sizing: border-box !important;
+}
+
+.vscode-body {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 20px !important;
+}
+
+/* Ensure code blocks use full width */
+pre {
+  width: 100% !important;
+  max-width: none !important;
+  overflow-x: auto !important;
+}
+
+/* Mermaid diagrams full width */
+.mermaid {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* Tables full width */
+table {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* Remove container constraints */
+.container {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}

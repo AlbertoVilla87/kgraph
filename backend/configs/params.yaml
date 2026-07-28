@@ -1,0 +1,41 @@
+entities:
+  - borrower
+  - lender
+  - servicer
+  - loan_amount
+  - interest_rate
+  - property_address
+  - monthly_payment
+  - loan_type
+  - origination_date
+  - modification_date
+  - late_fee
+  - escrow_account
+  - foreclosure_notice
+  - credit_bureau
+  - date
+  - amount
+
+relations:
+  - originated_by
+  - serviced_by
+  - secured_by
+  - modified_to
+  - failed_to_pay
+  - charged
+  - reported_to
+  - issued_notice_to
+  - disputed_by
+  - resolved_with
+
+thresholds:
+  entity: 0.5
+  relation: 0.5
+
+model:
+  name: "models/gliner-relex-large-v0.5"
+
+data_source:
+  type: "local_files"
+  folder: "backend/data/case_1"
+  file_type: "txt"
