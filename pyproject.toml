@@ -8,6 +8,7 @@ dependencies = [
     "docling>=2.113.0",
     "gliner>=0.2.27",
     "huggingface-hub[cli]>=1.23.0",
+    "mkdocs-material>=9.7.7",
     "networkx>=3.6.1",
     "numpy>=2.5.1",
     "pydantic>=2.13.4",
