@@ -1,7 +1,7 @@
 # src/kg_graph/ingestion/factory.py
-from backend.src.knowledge_graph.config import DataSourceConfig
-from backend.src.knowledge_graph.ingestion.base import DataSource
-from backend.src.knowledge_graph.ingestion.local_files import LocalFileSource
+from kgraph.graph.config import DataSourceConfig
+from kgraph.ingestion.base import DataSource
+from kgraph.ingestion.local_files import LocalFileSource
 
 def build_data_source(config: DataSourceConfig) -> DataSource:
     if config.type == "local_files":

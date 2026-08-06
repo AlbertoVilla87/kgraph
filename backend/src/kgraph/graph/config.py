@@ -21,7 +21,7 @@ class PipelineConfig(BaseModel):
     thresholds: ThresholdConfig
     model: ModelConfig
 
-def load_pipeline_config(path: str = "configs/pipeline.yaml") -> PipelineConfig:
+def load_pipeline_config(path: str) -> PipelineConfig:
     with open(Path(path)) as f:
         raw = yaml.safe_load(f)
     return PipelineConfig(**raw)

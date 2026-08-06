@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from backend.src.knowledge_graph.models import RawDocument
+from kgraph.graph.models import RawDocument
 
 class DataSource(ABC):
     @abstractmethod

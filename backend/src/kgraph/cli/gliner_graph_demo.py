@@ -1,10 +1,10 @@
-from backend.src.knowledge_graph import config
-from backend.src.knowledge_graph.ingestion.factory import build_data_source
-from backend.src.knowledge_graph.builders.gliner import GLiNERGraph
-from backend.src.knowledge_graph.retriever.gliner import GLiNERRetriever
+from kgraph.graph import config
+from kgraph.ingestion.factory import build_data_source
+from kgraph.extractors.gliner import GLiNERGraph
+from kgraph.retriever.gliner import GLiNERRetriever
 
 def main():
-    my_config = config.load_pipeline_config("backend/configs/params.yaml")
+    my_config = config.load_pipeline_config("./configs/params.yaml")
     source = build_data_source(my_config.data_source)
     documents = source.fetch()
     kgraph = GLiNERGraph(my_config)
