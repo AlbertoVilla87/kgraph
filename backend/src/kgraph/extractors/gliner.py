@@ -1,8 +1,8 @@
 import networkx as nx
 import json
 from typing import List, Dict, Set
-from backend.src.knowledge_graph.models import Entity, Relation, RawDocument
-from backend.src.knowledge_graph.config import PipelineConfig
+from kgraph.graph.models import Entity, Relation, RawDocument
+from kgraph.graph.config import PipelineConfig
 from gliner import GLiNER
 
 

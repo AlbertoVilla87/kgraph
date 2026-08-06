@@ -37,5 +37,5 @@ model:
 
 data_source:
   type: "local_files"
-  folder: "backend/data/case_1"
+  folder: "data/case_1"
   file_type: "txt"

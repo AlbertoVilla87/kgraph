@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "@rollup/rollup-darwin-arm64": "^4.62.2"
-  }
-}

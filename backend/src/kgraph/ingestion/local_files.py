@@ -1,7 +1,7 @@
 from pathlib import Path
-from backend.src.knowledge_graph.ingestion.base import DataSource
-from backend.src.knowledge_graph.models import RawDocument
-from backend.src.knowledge_graph.ingestion.parsers.parsers import PARSERS
+from kgraph.ingestion.base import DataSource
+from kgraph.graph.models import RawDocument
+from kgraph.ingestion.parsers.parsers import PARSERS
 
 class LocalFileSource(DataSource):
     def __init__(self, folder: str, file_type: str):

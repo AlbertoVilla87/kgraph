@@ -1,8 +1,8 @@
 from gliner import GLiNER
 from dataclasses import dataclass
-from typing import List, Set
-from backend.src.knowledge_graph.config import PipelineConfig
-from backend.src.knowledge_graph.builders.gliner import GLiNERGraph
+from typing import List
+from kgraph.graph.config import PipelineConfig
+from kgraph.extractors.gliner import GLiNERGraph
 
 @dataclass
 class RetrievalResult:
