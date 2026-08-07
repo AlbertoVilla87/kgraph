@@ -8,7 +8,7 @@ from gliner import GLiNER
 
 class EntityRelationExtractor:
     def __init__(self, config: PipelineConfig):
-        self.model = GLiNER.from_pretrained(config.model.name)
+        self.model = GLiNER.from_pretrained(config.ner.name)
         self.entity_labels = config.entities
         self.relation_labels = config.relations
         self.entity_threshold = config.thresholds.entity

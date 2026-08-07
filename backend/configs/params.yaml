@@ -32,8 +32,13 @@ thresholds:
   entity: 0.5
   relation: 0.5
 
-model:
+ner:
   name: "models/gliner-relex-large-v0.5"
+keyword_extractor:
+  name: "models/all-MiniLM-L6-v2"
+  diversity: 0.7
+  stop_words: "english"
+  n_grams: [1, 3]
 
 data_source:
   type: "local_files"
