@@ -22,7 +22,7 @@ class GLiNERRetriever:
         knowledge_graph: GLiNERGraph,
         expansion_depth: int = 2,
     ):
-        self.model = GLiNER.from_pretrained(config.model.name)
+        self.model = GLiNER.from_pretrained(config.ner.name)
         self.knowledge_graph = knowledge_graph
         self.entity_types = config.entities
         self.relation_types = config.relations
