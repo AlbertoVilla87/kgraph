@@ -77,7 +77,7 @@ uv run hf download sentence-transformers/all-MiniLM-L6-v2 --local-dir models/all
 │       ├── graph
 │       ├── ingestion
 │       └── retriever
-└── uv.lock
+└── uv.loc
 ```
 
 ## Usage
@@ -91,5 +91,5 @@ uv run gliner-demo
 ### KeyBERT demo
 
 ```sh
-uv run gliner-demo
+uv run kbert-demo
 ```
