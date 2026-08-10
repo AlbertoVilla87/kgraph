@@ -19,9 +19,30 @@ uv sync
 
 Run this once (or whenever you need to refresh the local cache):
 
+#### Keywords Extractor
+
+```bash
+uv run hf download sentence-transformers/all-MiniLM-L6-v2 --local-dir models/all-MiniLM-L6-v2
+```
+
+#### NER
+
 ```bash
 uv run hf download urchade/gliner_multi-v2.1 --local-dir models/gliner-relex-large-v0.5
-uv run hf download sentence-transformers/all-MiniLM-L6-v2 --local-dir models/all-MiniLM-L6-v2
+```
+
+#### LLM
+
+Install Ollama (macOS):
+
+```bash
+brew install --cask ollama
+```
+
+Download model (Qwen 0.6b)
+
+```bash
+ollama pull qwen3:0.6b
 ```
 
 ## Project Structure
@@ -92,4 +113,10 @@ uv run gliner-demo
 
 ```sh
 uv run kbert-demo
+```
+
+### QWEN demo
+
+```sh
+uv run qwen-demo
 ```

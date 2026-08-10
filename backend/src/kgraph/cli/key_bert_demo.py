@@ -14,8 +14,7 @@ def main() -> None:
     keywords = kw_model.extract_keywords(doc, 
                                          keyphrase_ngram_range=my_config.keyword_extractor.n_grams,
                                          stop_words=my_config.keyword_extractor.stop_words,
-                                         use_mmr=True,
-                                         diversity=my_config.keyword_extractor.diversity)
+                                         use_maxsum=True)
 
     print("\nKeywords:\n")
 
