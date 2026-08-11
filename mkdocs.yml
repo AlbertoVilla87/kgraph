@@ -31,7 +31,7 @@ theme:
 nav:
   - Home: index.md
   - Approaches:
-      - spaCy + BERTopic + Gliner: approaches/spacy_bertopic_gliner.md
+      - Adaptive KeyBERT + GLiNER: approaches/adaptive_keybert_gliner.md
 
 markdown_extensions:
   - admonition

@@ -11,11 +11,19 @@ class DataSourceConfig(BaseModel):
 class NERConfig(BaseModel):
     name: str
 
+class AdaptiveExtractorConfig(BaseModel):
+    min_k: int = 2
+    max_k: int = 20
+    words_per_kw: int = 40
+    score_floor: float = 0.2
+    max_candidates: int = 25
+
 class ExtractorConfig(BaseModel):
     name: str
     stop_words: str
     diversity: float
     n_grams: Tuple[int, int]
+    adaptive: AdaptiveExtractorConfig = AdaptiveExtractorConfig()
 
 class LLMConfig(BaseModel):
     name: str
