@@ -1,20 +1,15 @@
+from kgraph.extractors.key_bert import AdaptiveKeyBERT
 from kgraph.graph import config
-from keybert import KeyBERT
-from sentence_transformers import SentenceTransformer
 from kgraph.ingestion.factory import build_data_source
 
 
 def main() -> None:
     my_config = config.load_pipeline_config("./configs/params.yaml")
-    embedding_model = SentenceTransformer(my_config.keyword_extractor.name)
-    kw_model = KeyBERT(model=embedding_model)
     source = build_data_source(my_config.data_source)
     doc = source.fetch()[0].content
 
-    keywords = kw_model.extract_keywords(doc, 
-                                         keyphrase_ngram_range=my_config.keyword_extractor.n_grams,
-                                         stop_words=my_config.keyword_extractor.stop_words,
-                                         use_maxsum=True)
+    kw_model = AdaptiveKeyBERT(my_config.keyword_extractor)
+    keywords = kw_model.extract(doc)
 
     print("\nKeywords:\n")
 

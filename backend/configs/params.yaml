@@ -40,6 +40,12 @@ keyword_extractor:
   diversity: 0.7
   stop_words: "english"
   n_grams: [1, 2]
+  adaptive:
+    min_k: 2
+    max_k: 20
+    words_per_kw: 40
+    score_floor: 0.2
+    max_candidates: 25
 
 llm:
   name: "ollama/qwen3:0.6b"
