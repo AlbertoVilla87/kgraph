@@ -30,6 +30,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Development / Tooling: development.md
   - Approaches:
       - Adaptive KeyBERT + GLiNER: approaches/adaptive_keybert_gliner.md
 
