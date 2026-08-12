@@ -1,18 +1,20 @@
 # Approach 1: Adaptive KeyBERT + Topic Discovery
 
-> Updated to reflect the implemented pipeline: KeyBERT provides the topic seeds and a deterministic, **LLM-free** discovery pass (spaCy dependency parsing) expands both the relations and the new topics from those seeds.
+> Updated to reflect the assembled pipeline: KeyBERT provides the topic seeds, a deterministic **LLM-free** discovery pass (spaCy dependency parsing) expands the relations and new topics from those seeds, and the discovered topics/relations become the label taxonomy handed to GLiNER to build the final knowledge graph.
 
 ```mermaid
 flowchart LR
     A[(Document)] --> B[Adaptive KeyBERT]
     B --> C[Seed topics]
     C --> D[Topic-guided expansion]
-    D --> G[(Knowledge Graph)]
+    D --> E[Discovered topics + relations]
+    E --> F[GLiNER with discovered taxonomy]
+    F --> G[(Final Knowledge Graph)]
 ```
 
 ## Overview — the general approach
 
-The key idea: **KeyBERT provides the seeds, and from those seeds the pipeline discovers both the relations and the new topics — iteratively and without an LLM.**
+The key idea: **KeyBERT provides the seeds, and from those seeds the pipeline discovers both the relations and the new topics — iteratively and without an LLM — and then uses exactly those discoveries as the entity/relation taxonomy for GLiNER, closing the loop between discovery and extraction.**
 
 The design is a synthesis of two extremes that were both unsatisfactory on their own:
 
@@ -21,13 +23,14 @@ The design is a synthesis of two extremes that were both unsatisfactory on their
 
 The compromise is a **topic-guided expansion**: only the relations whose endpoints touch a *known* topic are kept, and each new endpoint becomes a topic that can be expanded in turn, up to a configured depth.
 
-The pipeline has three stages:
+The pipeline has four stages:
 
 1. **Seed stage** — `AdaptiveKeyBERT` extracts the initial topics from the document.
 2. **Relation extraction** — spaCy parses the dependency tree of every sentence and derives relations from its verbs: subject → verb(+preposition) → object.
 3. **Expansion** — a BFS from the seeds keeps only the relations touching a known topic, adds the other endpoint as a new node at `depth + 1`, and repeats until the queue runs dry or a limit is hit.
+4. **Assembly** — the discovered node texts and edge relations become the `entities`/`relations` labels passed to GLiNER, which extracts the final knowledge graph.
 
-The same GLiNER machinery still exists in the repo, but the discovery pipeline deliberately does **not** use GLiNER, embeddings, or any predefined relation taxonomy — the relation labels *emerge from the text*.
+The discovery pipeline deliberately does **not** use GLiNER, embeddings, or any predefined relation taxonomy — the relation labels *emerge from the text*. GLiNER is the last stage only, once the taxonomy has been discovered.
 
 ### In one example
 
@@ -174,21 +177,45 @@ Under `discovery` in `backend/configs/params.yaml`:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `spacy_model` | `en_core_web_sm` | spaCy model; swap for another language (e.g. `es_core_news_sm`) |
+| `spacy_model` | `models/en_core_web_sm` | Local spaCy model; swap for another language (e.g. `models/es_core_news_sm`) |
 | `pronouns` | `[]` | Extra pronouns to ignore as nodes, added to the English defaults (`I`, `you`, `my`, ...) |
 | `determiners` | `[]` | Extra leading determiners stripped from spans, added to the English defaults (`the`, `a`, `an`) |
 | `max_depth` | 2 | Maximum hops from the seeds (how far the expansion may grow) |
 | `max_relations` | 100 | Hard cap on the number of graph edges |
 
-### Demo output (mortgage case)
+### Demo output (CoT RL case)
 
-Seeds `payments equifax` and `late fee` expand into a 15-node graph (2 seeds at depth 0, 3 nodes at depth 1, 10 at depth 2) with 11 unique relations, e.g.:
+Seeds `commonsense reasoning` and `model reason` expand into a 16-node graph (2 seeds at depth 0, 12 nodes at depth 1, 2 at depth 2) with 9 unique relations, e.g.:
 
 ```text
-Summit Loan Servicing --report to--> Equifax
-Summit Loan Servicing --charge--> late fee
-mortgage loan          --obtain from--> Meridian Home Lending
-foreclosure notice     --receive from--> Summit Loan Servicing
+model          --exploit--> formatting artifacts
+CoT RL model   --discover in--> principle
+CoT-trained model --learn--> decomposition
+CoT RL         --extend--> this idea
+```
+
+## Stage 4 — Assembly: discovered taxonomy → GLiNER
+
+`DiscoveryAssembly` (in `kgraph/discovery/assembly.py`) closes the loop. After the topic graph is built, the discovered nodes and edges become the label set GLiNER extracts with:
+
+```python
+entity_labels   = [data["text"] for _, data in discovery_graph.nodes(data=True)]
+relation_labels = [data["relation"] for _, _, data in discovery_graph.edges(data=True)]
+```
+
+`build_pipeline_config` overrides the static `entities`/`relations` in `params.yaml` with these two lists, and `GLiNERGraph` builds the final graph from the same documents. The pipeline is therefore **self-tuning**: the taxonomy is not hand-written but derived from what the document actually talks about.
+
+Duplicate relations (the same head/relation/tail decoded from several overlapping entity spans) are merged in `GLiNERGraph.add_relation`: the edge keeps the **maximum score** and a `count` attribute records how often it was observed, so the retriever can rank by both confidence and supporting evidence.
+
+### Demo output (CoT RL case)
+
+`uv run assembly-demo` extracts 34 entities and 84 raw relations, deduplicated into a final graph of **31 entities and 73 unique relations**:
+
+```text
+model --[exploit (0.93, x2)]--> formatting artifacts
+CoT RL model --[discover in (0.74, x1)]--> principle
+A CoT-trained model --[learn (0.98, x2)]--> verification
+Chain-of-Thought Reinforcement Learning --[extend (0.83, x1)]--> CoT RL
 ```
 
 ## Other routes in the repo
@@ -196,13 +223,14 @@ foreclosure notice     --receive from--> Summit Loan Servicing
 These were explored earlier and remain in the codebase, but are **not** part of the discovery pipeline:
 
 - **Qwen3 via LiteLLM** (`kgraph/llms/litellm_client.py`, `uv run qwen-demo`) — asks a local Ollama model for semantic concepts with a strict Pydantic JSON schema. It was the original discovery engine; the experiment showed a small model hallucinates evidence and generic relations, which is why discovery is now deterministic.
-- **GLiNER** (`kgraph/extractors/gliner.py`, `uv run gliner-demo`) — builds a `networkx.MultiDiGraph` from predefined entity/relation types and powers `GLiNERRetriever`.
+- **GLiNER standalone** (`kgraph/extractors/gliner.py`, `uv run gliner-demo`) — builds a `networkx.MultiDiGraph` from the **static** entity/relation types in `params.yaml` and powers `GLiNERRetriever`. In the assembled pipeline the same class is reused, but fed with the taxonomy discovered by stages 1–3.
 
 ## Demos
 
 | CLI entry | What it does |
 | --- | --- |
 | `uv run discovery-demo` | KeyBERT seeds + topic-guided expansion (spaCy), prints the graph by depth |
+| `uv run assembly-demo` | Full pipeline: discovery then GLiNER with the discovered taxonomy, prints the final graph with scores and occurrence counts |
 | `uv run kbert-demo` | Runs Adaptive KeyBERT over the configured document and prints the chosen keywords |
 | `uv run qwen-demo` | Runs Qwen3 concept extraction with structured output |
 | `uv run gliner-demo` | Builds the graph with GLiNER and runs a retrieval query |
@@ -215,3 +243,5 @@ These were explored earlier and remain in the codebase, but are **not** part of 
 - **Route B (Qwen)** → 21 entities / 15 relations. Broader abstraction, but GLiNER tags more granular spans.
 
 The discovery pipeline answers the follow-up question: since a 0.6b model cannot be trusted to ground evidence or relations, can a **deterministic dependency parse** grow the graph from KeyBERT seeds instead? The initial answer, with the mortgage case, is yes — at the cost of surface-level labels ("obtained from") versus the abstract ones an LLM would invent.
+
+The assembled pipeline then asks whether the discovered taxonomy is good enough to *drive* GLiNER. On `data/case_2/cot_rl.txt` it is: the seeds `commonsense reasoning`/`model reason` grow into 9 discovered relations, and those labels make GLiNER extract 31 entities and 73 unique relations with no hand-written taxonomy (`uv run assembly-demo`). The two-step design keeps discovery deterministic (stages 1–3) while letting the generalist extractor GLiNER do the final, higher-recall pass over the text.
