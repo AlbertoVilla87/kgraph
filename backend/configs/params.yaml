@@ -50,7 +50,14 @@ keyword_extractor:
 llm:
   name: "ollama/qwen3:0.6b"
 
+discovery:
+  spacy_model: "en_core_web_sm"
+  pronouns: []
+  determiners: []
+  max_depth: 2
+  max_relations: 100
+
 data_source:
   type: "local_files"
-  folder: "data/case_1"
+  folder: "data/case_2"
   file_type: "txt"

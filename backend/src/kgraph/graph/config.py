@@ -28,6 +28,13 @@ class ExtractorConfig(BaseModel):
 class LLMConfig(BaseModel):
     name: str
 
+class DiscoveryConfig(BaseModel):
+    spacy_model: str = "en_core_web_sm"
+    pronouns: list[str] = []
+    determiners: list[str] = []
+    max_depth: int = 2
+    max_relations: int = 100
+
 class ThresholdConfig(BaseModel):
     entity: float
     relation: float
@@ -40,6 +47,7 @@ class PipelineConfig(BaseModel):
     ner: NERConfig
     keyword_extractor: ExtractorConfig
     llm: LLMConfig
+    discovery: DiscoveryConfig = DiscoveryConfig()
 
 def load_pipeline_config(path: str) -> PipelineConfig:
     with open(path) as f:
