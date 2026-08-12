@@ -125,18 +125,44 @@ class GLiNERGraph(EntityRelationExtractor):
             self.doc_index.setdefault(mention["doc_id"], set()).add(entity.id)
 
     def add_relation(self, relation: Relation):
-        """Add a relation as an edge between two entities."""
+        """Add a relation as an edge between two entities.
+
+        Duplicate relations (same head, relation type and tail) are merged:
+        the score is kept at the best detection and a ``count`` attribute
+        records how many times the relation was observed.
+        """
         source_ids = self.find_entity(relation.head_text)
         target_ids = self.find_entity(relation.tail_text)
 
-        if source_ids and target_ids:
+        if not source_ids or not target_ids:
+            return
+
+        source_id, target_id = source_ids[0], target_ids[0]
+        key = self._find_edge(source_id, target_id, relation.relation_type)
+        if key is None:
             self.graph.add_edge(
-                source_ids[0],
-                target_ids[0],
+                source_id,
+                target_id,
                 relation_type=relation.relation_type,
                 score=relation.score,
+                count=1,
                 source_doc=relation.source_doc,
             )
+            return
+
+        existing = self.graph.edges[source_id, target_id, key]
+        existing["score"] = max(existing["score"], relation.score)
+        existing["count"] = existing.get("count", 1) + 1
+
+    def _find_edge(self, source_id: str, target_id: str, relation_type: str):
+        """Return the edge key between two nodes with the given relation type."""
+        edge_data = self.graph.get_edge_data(source_id, target_id)
+        if not edge_data:
+            return None
+        for key, data in edge_data.items():
+            if data.get("relation_type") == relation_type:
+                return key
+        return None
 
     def find_entity(self, text: str) -> List[str]:
         """Find entity IDs by text (case-insensitive)."""

@@ -31,6 +31,23 @@ uv run hf download sentence-transformers/all-MiniLM-L6-v2 --local-dir models/all
 uv run hf download urchade/gliner_multi-v2.1 --local-dir models/gliner-relex-large-v0.5
 ```
 
+#### SpaCy (topic discovery)
+
+Download `en_core_web_sm` into `models/en_core_web_sm` so the discovery stage
+is fully local and self-contained:
+
+```bash
+curl -L -o /tmp/en_core_web_sm.whl \
+  https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+unzip -o -q /tmp/en_core_web_sm.whl -d /tmp/en_core_web_sm_pkg
+mkdir -p models/en_core_web_sm
+cp -R /tmp/en_core_web_sm_pkg/en_core_web_sm/en_core_web_sm-3.8.0/. models/en_core_web_sm/
+rm -rf /tmp/en_core_web_sm.whl /tmp/en_core_web_sm_pkg
+```
+
+`models/` is git-ignored; the path is configured via `discovery.spacy_model`
+in `configs/params.yaml`.
+
 #### LLM
 
 Install Ollama (macOS):
@@ -102,6 +119,24 @@ ollama pull qwen3:0.6b
 ```
 
 ## Usage
+
+### QWEN demo
+
+```sh
+uv run qwen-demo
+```
+
+### Topic discovery demo
+
+```sh
+uv run discovery-demo
+```
+
+### Assembly: discovery → GLiNER
+
+```sh
+uv run assembly-demo
+```
 
 ### Gliner + KnowledgeGraph + Retrieval
 

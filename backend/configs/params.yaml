@@ -51,7 +51,7 @@ llm:
   name: "ollama/qwen3:0.6b"
 
 discovery:
-  spacy_model: "en_core_web_sm"
+  spacy_model: "models/en_core_web_sm"
   pronouns: []
   determiners: []
   max_depth: 2
