@@ -1,29 +1,45 @@
-# Approach 1: Adaptive KeyBERT + GLiNER
+# Approach 1: Adaptive KeyBERT + Topic Discovery
 
-> Updated to reflect the implemented pipeline (the original spaCy/BERTopic design was replaced by **KeyBERT** as the keyword source).
+> Updated to reflect the implemented pipeline: KeyBERT provides the topic seeds and a deterministic, **LLM-free** discovery pass (spaCy dependency parsing) expands both the relations and the new topics from those seeds.
 
 ```mermaid
 flowchart LR
-    A[(Document)] --> B[Docling]
-    B --> C{Topic seed}
-    C --> D[Adaptive KeyBERT]
-    C --> E[Qwen3 via LiteLLM]
-    D --> F[GLiNER]
-    E --> F
-    F --> G[(Knowledge Graph)]
-    G --> H[GLiNERRetriever]
+    A[(Document)] --> B[Adaptive KeyBERT]
+    B --> C[Seed topics]
+    C --> D[Topic-guided expansion]
+    D --> G[(Knowledge Graph)]
 ```
 
-## Overview
+## Overview — the general approach
 
-A document goes through **topic discovery** and then **graph extraction**:
+The key idea: **KeyBERT provides the seeds, and from those seeds the pipeline discovers both the relations and the new topics — iteratively and without an LLM.**
 
-1. **Topic seed** — produce a small set of labels (keywords or concepts) that describe the document.
-2. **Graph extraction** — GLiNER uses those labels as *entity types* and extracts entities + relations, which are assembled into a `networkx` graph.
+The design is a synthesis of two extremes that were both unsatisfactory on their own:
 
-The same GLiNER machinery runs regardless of the seed — only the labels change. That is the point of the experiment: how the *choice of topic seed* changes what the graph captures.
+- **KeyBERT alone falls short** — it returns a handful of phrases and no relationships between them.
+- **Extracting every subject-verb-object triple** (the naive spaCy approach) is too much — every sentence of the document produces edges, drowning the signal in noise.
 
-## Route A — Adaptive KeyBERT
+The compromise is a **topic-guided expansion**: only the relations whose endpoints touch a *known* topic are kept, and each new endpoint becomes a topic that can be expanded in turn, up to a configured depth.
+
+The pipeline has three stages:
+
+1. **Seed stage** — `AdaptiveKeyBERT` extracts the initial topics from the document.
+2. **Relation extraction** — spaCy parses the dependency tree of every sentence and derives relations from its verbs: subject → verb(+preposition) → object.
+3. **Expansion** — a BFS from the seeds keeps only the relations touching a known topic, adds the other endpoint as a new node at `depth + 1`, and repeats until the queue runs dry or a limit is hit.
+
+The same GLiNER machinery still exists in the repo, but the discovery pipeline deliberately does **not** use GLiNER, embeddings, or any predefined relation taxonomy — the relation labels *emerge from the text*.
+
+### In one example
+
+The first paragraph of the mortgage case:
+
+> I obtained a mortgage loan of $285,000 from Meridian Home Lending in June 2021 for my property at 142 Oakwood Drive. The loan was originated with a fixed interest rate of 4.25% and a monthly payment of $1,650.
+
+- **Seeds** (KeyBERT): `payments equifax`, `late fee`
+- **Relations** (spaCy dependencies): `mortgage loan --obtain from--> Meridian Home Lending`, `loan --originate with--> fixed interest rate`
+- **New topics**: the endpoints that were not seeds (`Meridian Home Lending`, `fixed interest rate`, ...) become expandable nodes at the next depth.
+
+## Stage 1 — Adaptive KeyBERT (seeds)
 
 `AdaptiveKeyBERT` (in `kgraph/extractors/key_bert.py`) replaces a fixed `top_n` with an **adaptive count** driven by two signals: document length and the shape of the similarity scores.
 
@@ -38,7 +54,7 @@ The same GLiNER machinery runs regardless of the seed — only the labels change
 
 2. **Noise floor.** Drop anything below `score_floor`.
 
-3. **Elbow cutoff.** Look for the *knee* of the sorted similarity scores inside the `[min_k, max_k]` window, using the `kneed` library. The window itself is scaled by document length, so a 50-word text does not compete for the same range as a 2000-word one:
+3. **Elbow cutoff.** Look for the *knee* of the sorted similarity scores inside the `[min_k, max_k]` window, using the `kneed` library:
 
    ```python
    window = scores[min_k - 1 : min(max_k, len(scores))]
@@ -46,11 +62,11 @@ The same GLiNER machinery runs regardless of the seed — only the labels change
    cutoff = max(min_k, min(max_k, knee))
    ```
 
-   The idea: KeyBERT's scores normally drop sharply at the point where "this describes the text" becomes "this is filler". The largest drop *within a bounded window* is a simple elbow heuristic; `kneed` makes the detection more robust to noise.
+   The idea: KeyBERT's scores normally drop sharply at the point where "this describes the text" becomes "this is filler".
 
 ### Configuration
 
-The adaptive behavior is configurable in `backend/configs/params.yaml` under `keyword_extractor.adaptive`:
+Under `keyword_extractor.adaptive` in `backend/configs/params.yaml`:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -60,43 +76,142 @@ The adaptive behavior is configurable in `backend/configs/params.yaml` under `ke
 | `score_floor` | 0.2 | Relevance threshold below which candidates are dropped |
 | `max_candidates` | 25 | Cap on the generous pool requested from KeyBERT |
 
-## Route B — Qwen3 via LiteLLM
+## Stage 2 — Relation extraction (spaCy dependencies, no LLM)
 
-`LiteLLMClient` (`kgraph/llms/litellm_client.py`) sends the document to a local **Qwen3** model (Ollama) and asks for *semantic concepts*. A Pydantic schema (`Concepts`) is enforced through `response_format` JSON-schema with `strict: true`, so the model answers in a structured, validated form.
+`DependencyRelationExtractor` (in `kgraph/discovery/dependency_relations.py`) extracts relations from the dependency tree. For each sentence it takes the predicate verbs — the root verb plus verb complements/conjuncts (`xcomp`, `ccomp`, `conj`) — and derives the arguments from each verb:
 
-Where KeyBERT returns document-local surface phrases (*"summit loan servicing"*, *"disputed late fee"*), Qwen returns abstract buckets (*"Loan Servicing Dispute"*, *"Credit Reporting"*).
+```python
+for sent in nlp(doc).sents:
+    root = sent.root
+    for verb in _verbs(root):        # root + xcomp / ccomp / conj
+        subj = _subject(verb, root)  # nsubj / nsubjpass
+        obj  = _object(verb)         # dobj, or pobj of a preposition
+        label = f"{verb.lemma_} {prep}"   # "obtained from", "reported to"
+```
 
-## Graph extraction — GLiNER
+Key rules:
 
-`GLiNERGraph` (`kgraph/extractors/gliner.py`) builds the in-memory `networkx.MultiDiGraph`:
+- **Relation labels are auto-discovered.** The label is the verb lemma plus its preposition ("obtained from", "reported to", "charging"). There is no ontology — it emerges from the parse.
+- **Pronoun subjects are dropped as nodes.** When the subject is a pronoun ("I obtained..."), the relation is re-anchored between the direct object and the prepositional object: *"I obtained a mortgage loan from Meridian Home Lending"* → `mortgage loan --obtained from--> Meridian Home Lending`.
+- **Prepositions attached to nouns are also followed** (*"reported the missed payments **to Equifax**"*, where `to` hangs off `payments`).
+- The **evidence** is always the sentence the relation was parsed from — it cannot be hallucinated because nothing generates it.
 
-- **Entities** are deduplicated (case-insensitive) and merged across mentions; each node stores `text`, `entity_type`, `score` and `mentions`.
-- **Relations** become edges between the two entities they mention, with `relation_type` and `score`.
-- Indexes (`entity_text_index`, `entity_type_index`, `doc_index`) back the traversal methods.
+### A worked example
 
-## Retrieval — GLiNERRetriever
+Sentences in, relations out:
 
-`GLiNERRetriever` (`kgraph/retriever/gliner.py`) answers queries by walking the graph:
+```text
+"I obtained a mortgage loan from Meridian Home Lending in June 2021."
+  → mortgage loan --obtain from--> Meridian Home Lending
+  → mortgage loan --obtain in--> June
 
-1. Extract entities from the query (with a relaxed threshold).
-2. Match them in the graph, then expand to neighbors up to `expansion_depth`.
-3. Collect the relevant relations and the source documents behind them.
+"The servicing of my loan was transferred to Summit Loan Servicing."
+  → servicing --transfer to--> Summit Loan Servicing
 
-`format_context()` renders the result as LLM-ready context.
+"Summit Loan Servicing reported the missed payments to Equifax."
+  → Summit Loan Servicing --report--> missed payments
+  → Summit Loan Servicing --report to--> Equifax        # 'to' hangs off the noun
+
+"Summit Loan Servicing began charging me a late fee of $75."
+  → Summit Loan Servicing --charge--> late fee          # 'charging' is xcomp of 'began'
+```
+
+Note what the rules do on the first example: the subject `I` is a pronoun, so the
+relation is re-anchored between the object `mortgage loan` and the prepositional
+object `Meridian Home Lending`, and the label becomes the verb lemma plus its
+preposition (`obtain from`).
+
+## Stage 3 — Topic-guided expansion (BFS)
+
+`TopicGraph` (in `kgraph/discovery/topic_graph.py`) grows the graph from the seeds:
+
+```python
+queue = deque(seeds)                    # depth 0
+while queue:
+    topic = queue.popleft()
+    if depth(topic) >= max_depth:
+        continue
+    for rel in relations:
+        if not (touches(rel.source, topic) or touches(rel.target, topic)):
+            continue                    # relation not related to a known topic
+        add_edge(rel)
+        for endpoint in (rel.source, rel.target):
+            if endpoint != topic and endpoint not in graph:
+                add_node(endpoint, depth + 1)
+                queue.append(endpoint)  # new topic to expand
+```
+
+- **`touches`** is a token overlap between the endpoint and the topic (e.g. the seed `payments equifax` pulls in `missed payments` because they share `payments`).
+- Every endpoint that is not the topic itself and not yet in the graph becomes a **new node at `depth + 1`** and is queued for expansion — this is how new topics keep appearing from the seeds.
+- Duplicate edges and the seed phrases themselves (which may not appear verbatim in the text) are handled: edges are deduplicated by `(source, target, relation)`.
+
+### A worked example
+
+Seeds are enqueued at depth 0 and expanded breadth-first. Each expansion pulls
+every relation touching the topic, and the *other* endpoint becomes a new node:
+
+```text
+depth 0  payments equifax  ·  late fee
+         │
+         ├─ report ─────────────►  missed payments   (shares "payments")
+         ├─ report to ──────────►  Equifax           (shares "equifax")
+         └─ charging ──────────►  late fee           (a seed itself)
+
+depth 1  Summit Loan Servicing  ·  missed payments  ·  Equifax
+         │
+         ├─ transfer to ────────►  servicing
+         ├─ respond to ────────►  my dispute
+         ├─ obtain from ───────►  Meridian Home Lending   (via shared "loan")
+         └─ receive from ──────►  foreclosure notice
+```
+
+The expansion stops because the nodes it reaches are at `max_depth = 2`; the
+graph is seeded, not exhaustive.
+
+### Configuration
+
+Under `discovery` in `backend/configs/params.yaml`:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `spacy_model` | `en_core_web_sm` | spaCy model; swap for another language (e.g. `es_core_news_sm`) |
+| `pronouns` | `[]` | Extra pronouns to ignore as nodes, added to the English defaults (`I`, `you`, `my`, ...) |
+| `determiners` | `[]` | Extra leading determiners stripped from spans, added to the English defaults (`the`, `a`, `an`) |
+| `max_depth` | 2 | Maximum hops from the seeds (how far the expansion may grow) |
+| `max_relations` | 100 | Hard cap on the number of graph edges |
+
+### Demo output (mortgage case)
+
+Seeds `payments equifax` and `late fee` expand into a 15-node graph (2 seeds at depth 0, 3 nodes at depth 1, 10 at depth 2) with 11 unique relations, e.g.:
+
+```text
+Summit Loan Servicing --report to--> Equifax
+Summit Loan Servicing --charge--> late fee
+mortgage loan          --obtain from--> Meridian Home Lending
+foreclosure notice     --receive from--> Summit Loan Servicing
+```
+
+## Other routes in the repo
+
+These were explored earlier and remain in the codebase, but are **not** part of the discovery pipeline:
+
+- **Qwen3 via LiteLLM** (`kgraph/llms/litellm_client.py`, `uv run qwen-demo`) — asks a local Ollama model for semantic concepts with a strict Pydantic JSON schema. It was the original discovery engine; the experiment showed a small model hallucinates evidence and generic relations, which is why discovery is now deterministic.
+- **GLiNER** (`kgraph/extractors/gliner.py`, `uv run gliner-demo`) — builds a `networkx.MultiDiGraph` from predefined entity/relation types and powers `GLiNERRetriever`.
 
 ## Demos
 
 | CLI entry | What it does |
 | --- | --- |
+| `uv run discovery-demo` | KeyBERT seeds + topic-guided expansion (spaCy), prints the graph by depth |
 | `uv run kbert-demo` | Runs Adaptive KeyBERT over the configured document and prints the chosen keywords |
 | `uv run qwen-demo` | Runs Qwen3 concept extraction with structured output |
 | `uv run gliner-demo` | Builds the graph with GLiNER and runs a retrieval query |
 
-## Experiment — Exp 02 (Qwen vs KeyBERT)
+## Experiment — does a small model add anything?
 
-`backend/experiments/exp_02_qwen_versus_keybert.ipynb` compares both routes on the same document (`data/case_1/mortgage.txt`):
+`backend/experiments/exp_02_qwen_versus_keybert.ipynb` compares the two *topic-seed* routes on `data/case_1/mortgage.txt`:
 
 - **Route A (KeyBERT)** → 12 entities / 13 relations. Compact, faithful to the text, but narrow.
 - **Route B (Qwen)** → 21 entities / 15 relations. Broader abstraction, but GLiNER tags more granular spans.
 
-Observations are recorded in the notebook; the comparison is intentionally informal — nothing conclusive yet.
+The discovery pipeline answers the follow-up question: since a 0.6b model cannot be trusted to ground evidence or relations, can a **deterministic dependency parse** grow the graph from KeyBERT seeds instead? The initial answer, with the mortgage case, is yes — at the cost of surface-level labels ("obtained from") versus the abstract ones an LLM would invent.

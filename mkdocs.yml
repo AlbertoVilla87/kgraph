@@ -32,7 +32,7 @@ nav:
   - Home: index.md
   - Development / Tooling: development.md
   - Approaches:
-      - Adaptive KeyBERT + GLiNER: approaches/adaptive_keybert_gliner.md
+      - Adaptive KeyBERT + Topic Discovery: approaches/adaptive_keybert_gliner.md
 
 markdown_extensions:
   - admonition

@@ -19,12 +19,14 @@ dependencies = [
     "numpy>=2.5.1",
     "pydantic>=2.13.4",
     "pyyaml",
+    "spacy>=3.7",
     "streamlit>=1.59.2",
 ]
 [project.scripts]
 gliner-demo = "kgraph.cli.gliner_graph_demo:main"
 kbert-demo = "kgraph.cli.key_bert_demo:main"
 qwen-demo = "kgraph.cli.qwen_demo:main"
+discovery-demo = "kgraph.cli.topic_discovery_demo:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

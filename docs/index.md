@@ -8,7 +8,7 @@ Experimenting with multiple approaches to knowledge graph construction from docu
 
 ## Approaches
 
--  Adaptive KeyBERT + GLiNER
+-  Adaptive KeyBERT + Topic Discovery
 
 ---
 
