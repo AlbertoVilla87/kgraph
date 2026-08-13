@@ -178,10 +178,17 @@ Under `discovery` in `backend/configs/params.yaml`:
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `spacy_model` | `models/en_core_web_sm` | Local spaCy model; swap for another language (e.g. `models/es_core_news_sm`) |
-| `pronouns` | `[]` | Extra pronouns to ignore as nodes, added to the English defaults (`I`, `you`, `my`, ...) |
 | `determiners` | `[]` | Extra leading determiners stripped from spans, added to the English defaults (`the`, `a`, `an`) |
 | `max_depth` | 2 | Maximum hops from the seeds (how far the expansion may grow) |
 | `max_relations` | 100 | Hard cap on the number of graph edges |
+
+The config also exposes an `entity_merging` block used by the assembly stage:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Toggle the near-duplicate entity merge in `GLiNERGraph.add_entity` |
+| `threshold` | `0.85` | Reserved for the embedding-similarity merge pass (not yet wired up) |
+| `model` | `models/all-MiniLM-L6-v2` | Reserved for the embedding-similarity merge pass (not yet wired up) |
 
 ### Demo output (CoT RL case)
 
@@ -194,6 +201,16 @@ CoT-trained model --learn--> decomposition
 CoT RL         --extend--> this idea
 ```
 
+### Demo output (medium case)
+
+`data/case_2/medium.txt` is the current default corpus. Seeds `described dumping` and `graphify credible` expand into a 7-node graph (2 at depth 0, 4 at depth 1, 1 at depth 2) with 3 unique relations:
+
+```text
+(d1) Karpathy --[describe]--> (d1) dumping papers
+(d1) Karpathy --[articulate]--> (d2) shift
+(d1) developer --[release]--> (d1) Graphify
+```
+
 ## Stage 4 — Assembly: discovered taxonomy → GLiNER
 
 `DiscoveryAssembly` (in `kgraph/discovery/assembly.py`) closes the loop. After the topic graph is built, the discovered nodes and edges become the label set GLiNER extracts with:
@@ -203,20 +220,36 @@ entity_labels   = [data["text"] for _, data in discovery_graph.nodes(data=True)]
 relation_labels = [data["relation"] for _, _, data in discovery_graph.edges(data=True)]
 ```
 
+**Labels are underscore-joined.** GLiNER tokenizes labels on whitespace, so a multi-word taxonomy like `dumping papers` is ambiguous ("dumping" and "papers" read as two separate labels). `DiscoveryAssembly._label` replaces every space with `_` before handing the taxonomy to GLiNER:
+
+```python
+"dumping papers"  →  "dumping_papers"      # one label
+"describe"        →  "describe"            # single word, unchanged
+```
+
 `build_pipeline_config` overrides the static `entities`/`relations` in `params.yaml` with these two lists, and `GLiNERGraph` builds the final graph from the same documents. The pipeline is therefore **self-tuning**: the taxonomy is not hand-written but derived from what the document actually talks about.
 
 Duplicate relations (the same head/relation/tail decoded from several overlapping entity spans) are merged in `GLiNERGraph.add_relation`: the edge keeps the **maximum score** and a `count` attribute records how often it was observed, so the retriever can rank by both confidence and supporting evidence.
 
-### Demo output (CoT RL case)
+### Entity normalization and merging
 
-`uv run assembly-demo` extracts 34 entities and 84 raw relations, deduplicated into a final graph of **31 entities and 73 unique relations**:
+`GLiNERGraph.add_entity` deduplicates nodes through `kgraph/extractors/normalization.py` instead of a plain lowercased key:
+
+- **`canonical(text)`** — lowercases, collapses whitespace, and strips a leading article, so `"A CoT-trained model"` and `"CoT-trained model"` canonicalize to the same key.
+- **`EntityMerger`** (enabled via `entity_merging.enabled` in `params.yaml`) adds a second, containment-based pass: `token_subset(short, long)` is true when every token of one text appears in the other (e.g. `model` ⊆ `reasoning model`, `artifacts` ⊆ `formatting artifacts`). The shorter text merges into the longer, keeping the more specific label.
+
+Merging keeps the node with the best score, accumulates mentions, and updates the entity-type index accordingly. `find_entity` uses the same `canonical` key so relations still resolve against merged nodes.
+
+### Demo output (medium case)
+
+`uv run assembly-demo` extracts 4 entities and 8 raw relations from `data/case_2/medium.txt`, merged into a final graph of **4 entities and 2 unique relations**:
 
 ```text
-model --[exploit (0.93, x2)]--> formatting artifacts
-CoT RL model --[discover in (0.74, x1)]--> principle
-A CoT-trained model --[learn (0.98, x2)]--> verification
-Chain-of-Thought Reinforcement Learning --[extend (0.83, x1)]--> CoT RL
+Karpathy --[describe (0.91, x4)]--> papers
+Safi Shamsi --[release (0.99, x4)]--> Graphify
 ```
+
+> **Known caveat — GLiNER truncates long documents.** GLiNER's context window is 1024 tokens; `medium.txt` is 2388 tokens, so the pipeline only analyzes the first half and emits a `UserWarning` (`Sentence of length 2388 has been truncated to 1024`). Entity/relation counts above are what survives in the analyzed window, not the full document. Chunking the document before extraction is the planned fix (see Open questions below).
 
 ## Other routes in the repo
 
@@ -230,7 +263,8 @@ These were explored earlier and remain in the codebase, but are **not** part of 
 | CLI entry | What it does |
 | --- | --- |
 | `uv run discovery-demo` | KeyBERT seeds + topic-guided expansion (spaCy), prints the graph by depth |
-| `uv run assembly-demo` | Full pipeline: discovery then GLiNER with the discovered taxonomy, prints the final graph with scores and occurrence counts |
+| `uv run assembly-demo [--output path]` | Full pipeline: discovery then GLiNER with the discovered taxonomy; prints the final graph with scores and occurrence counts and exports it to `output/kg_final.json` by default |
+| `uv run graph-viz output/kg_final.json` | Renders a graph JSON into a standalone interactive HTML (vis-network), colored by `entity_type` with a legend |
 | `uv run kbert-demo` | Runs Adaptive KeyBERT over the configured document and prints the chosen keywords |
 | `uv run qwen-demo` | Runs Qwen3 concept extraction with structured output |
 | `uv run gliner-demo` | Builds the graph with GLiNER and runs a retrieval query |
@@ -244,4 +278,4 @@ These were explored earlier and remain in the codebase, but are **not** part of 
 
 The discovery pipeline answers the follow-up question: since a 0.6b model cannot be trusted to ground evidence or relations, can a **deterministic dependency parse** grow the graph from KeyBERT seeds instead? The initial answer, with the mortgage case, is yes — at the cost of surface-level labels ("obtained from") versus the abstract ones an LLM would invent.
 
-The assembled pipeline then asks whether the discovered taxonomy is good enough to *drive* GLiNER. On `data/case_2/cot_rl.txt` it is: the seeds `commonsense reasoning`/`model reason` grow into 9 discovered relations, and those labels make GLiNER extract 31 entities and 73 unique relations with no hand-written taxonomy (`uv run assembly-demo`). The two-step design keeps discovery deterministic (stages 1–3) while letting the generalist extractor GLiNER do the final, higher-recall pass over the text.
+The assembled pipeline then asks whether the discovered taxonomy is good enough to *drive* GLiNER. On the earlier `data/case_2/cot_rl.txt` corpus it was: the seeds `commonsense reasoning`/`model reason` grew into 9 discovered relations, and those labels made GLiNER extract 31 entities and 73 unique relations with no hand-written taxonomy. The current default corpus `data/case_2/medium.txt` produces a smaller taxonomy (3 relations → 2 final graph edges, see Stage 4) but the same self-tuning loop. The two-step design keeps discovery deterministic (stages 1–3) while letting the generalist extractor GLiNER do the final, higher-recall pass over the text.

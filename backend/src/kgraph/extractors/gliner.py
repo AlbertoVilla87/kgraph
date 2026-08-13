@@ -3,6 +3,7 @@ import json
 from typing import List, Dict, Set
 from kgraph.graph.models import Entity, Relation, RawDocument
 from kgraph.graph.config import PipelineConfig
+from kgraph.extractors.normalization import EntityMerger, canonical
 from gliner import GLiNER
 
 
@@ -33,9 +34,7 @@ class EntityRelationExtractor:
             mention = {"doc_id": doc.id, "score": item["score"]}
 
             if entity_id in self.entity_index:
-                existing = self.entity_index[entity_id]
-                existing.mentions.append(mention)
-                entities.append(existing)
+                self.entity_index[entity_id].mentions.append(mention)
             else:
                 entity = Entity(
                     id=entity_id,
@@ -94,6 +93,12 @@ class GLiNERGraph(EntityRelationExtractor):
         self.doc_index: Dict[str, Set[str]] = {}
         self.entities = list[Entity]
         self.relations = list[Relation]
+        merging = my_config.entity_merging
+        self.merger = (
+            EntityMerger()
+            if merging.enabled
+            else None
+        )
         
     def build(self, documents: List[RawDocument]):
         """Build graph"""
@@ -108,7 +113,31 @@ class GLiNERGraph(EntityRelationExtractor):
         self.entities, self.relations = self.extract_from_corpus(documents)
 
     def add_entity(self, entity: Entity):
-        """Add an entity as a node."""
+        """Add an entity as a node.
+
+        Entities are deduplicated by normalized text: the same span decoded
+        with different labels (e.g. "CoT RL" as ``CoT RL`` and ``CoT RL model``)
+        is merged into a single node, keeping the best score and accumulating
+        mentions. When ``entity_merging`` is enabled, near-duplicates are also
+        collapsed via canonical form (leading articles, whitespace) and, when
+        still unmatched, via embedding similarity.
+        """
+        normalized = canonical(entity.text)
+        existing = self.entity_text_index.get(normalized)
+
+        if existing is None and self.merger is not None:
+            match = self.merger.match(normalized)
+            if match is not None:
+                existing = self.entity_text_index.get(match)
+
+        if existing:
+            node = self.graph.nodes[existing[0]]
+            if entity.score > node.get("score", 0):
+                node["score"] = entity.score
+                node["entity_type"] = entity.entity_type
+            node["mentions"].extend(entity.mentions)
+            return
+
         self.graph.add_node(
             entity.id,
             text=entity.text,
@@ -116,8 +145,6 @@ class GLiNERGraph(EntityRelationExtractor):
             score=entity.score,
             mentions=entity.mentions,
         )
-
-        normalized = entity.text.lower().strip()
         self.entity_text_index.setdefault(normalized, []).append(entity.id)
         self.entity_type_index.setdefault(entity.entity_type, []).append(entity.id)
 
@@ -166,7 +193,7 @@ class GLiNERGraph(EntityRelationExtractor):
 
     def find_entity(self, text: str) -> List[str]:
         """Find entity IDs by text (case-insensitive)."""
-        return self.entity_text_index.get(text.lower().strip(), [])
+        return self.entity_text_index.get(canonical(text), [])
 
     def find_entity_type(self, entity_type: str) -> List[str]:
         """Find entity IDs by entity (case-insensitive)."""

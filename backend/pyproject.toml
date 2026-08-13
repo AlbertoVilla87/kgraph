@@ -28,6 +28,7 @@ kbert-demo = "kgraph.cli.key_bert_demo:main"
 qwen-demo = "kgraph.cli.qwen_demo:main"
 discovery-demo = "kgraph.cli.topic_discovery_demo:main"
 assembly-demo = "kgraph.cli.assembly_demo:main"
+graph-viz = "kgraph.cli.graph_viz:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
