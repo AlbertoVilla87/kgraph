@@ -2,11 +2,22 @@
 
 ## Overview
 
-Experimenting with multiple approaches to knowledge graph construction from documents_
+A state-of-the-art explorer for any research topic. Papers from sources like arXiv and IEEE are turned into an accumulated knowledge graph that maps the field, exposes originality, and surfaces unexplored gaps.
 
 - Approach 1: spaCy/AutoPhrase + BERTopic + GLiNER
 - Approach 2: LLM...
 - Assembly pipeline (current): Adaptive KeyBERT seeds → LLM-free topic-guided discovery (spaCy) → GLiNER with the discovered taxonomy
+
+### What you can do with it
+
+| Question | How |
+| --- | --- |
+| What does the field look like? | `uv run assembly-demo` builds the topic graph and exports `output/kg_final.json`; `uv run graph-viz` renders it as an interactive HTML |
+| Is my idea already published? | Any idea you think of becomes a GLiNER label (zero-shot) — run it against the corpus and see if it appears and how it connects (planned) |
+| What is original? | Compare a new paper against the accumulated topic graph: novel nodes/edges stand out structurally (planned) |
+| What hasn't been explored? | Rare/absent concepts and relations in the graph are candidate gaps (planned) |
+
+> Sources (arXiv/IEEE harvesters) and the accumulated/originality layers are designed but not yet implemented — the pipeline currently reads a local corpus folder.
 
 ## Installation
 
