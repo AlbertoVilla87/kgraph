@@ -7,6 +7,10 @@ wheels/
 models/
 *.egg-info
 site/
+output/
 
 # Virtual environments
 .venv
+
+# macOS
+.DS_Store

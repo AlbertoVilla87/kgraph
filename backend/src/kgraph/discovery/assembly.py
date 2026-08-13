@@ -38,12 +38,17 @@ class DiscoveryAssembly:
         return final_graph
 
     @staticmethod
+    def _label(text: str) -> str:
+        """GLiNER tokenizes labels on whitespace, so multi-word labels must use ``_``."""
+        return text.replace(" ", "_")
+
+    @staticmethod
     def _node_labels(graph: nx.MultiDiGraph) -> List[str]:
-        return [data["text"] for _, data in graph.nodes(data=True)]
+        return [DiscoveryAssembly._label(data["text"]) for _, data in graph.nodes(data=True)]
 
     @staticmethod
     def _edge_labels(graph: nx.MultiDiGraph) -> List[str]:
         labels: Dict[str, None] = {}
         for _, _, data in graph.edges(data=True):
-            labels.setdefault(data["relation"], None)
+            labels.setdefault(DiscoveryAssembly._label(data["relation"]), None)
         return list(labels)

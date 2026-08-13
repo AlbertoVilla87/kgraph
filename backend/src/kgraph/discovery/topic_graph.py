@@ -25,7 +25,6 @@ class TopicGraph:
         self.keybert = AdaptiveKeyBERT(config.keyword_extractor)
         self.extractor = DependencyRelationExtractor(
             model=config.discovery.spacy_model,
-            pronouns=config.discovery.pronouns,
             determiners=config.discovery.determiners,
         )
         self.graph = nx.MultiDiGraph()

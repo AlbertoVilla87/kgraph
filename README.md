@@ -33,31 +33,36 @@ The "café recalentado" case — a LinkedIn post using different vocabulary to s
 ## Pipeline
 
 **Concept (entity) extraction**
-- KeyBERT → candidate key terms per document
-- BERTopic (embeddings + UMAP + HDBSCAN + KeyBERTInspired/c-TF-IDF) → clusters candidate terms into emergent topic labels
-- GLiNER → zero-shot entity extraction using those discovered labels, with confidence scores
+- Adaptive KeyBERT → candidate topic seeds per document (adaptive count via score elbow)
+- Topic-guided expansion (spaCy dependency parsing, LLM-free) → grows the seeds into a graph of topics and relations
+- GLiNER → zero-shot entity + relation extraction using exactly those discovered topics/relations as labels (underscore-joined), with confidence scores
+- Entity normalization & merging (`normalization.py`) collapses near-duplicates (`canonical`, token containment) before the final graph
 
 **Relation extraction**
-- spaCy dependency parsing (shortest syntactic path between entity pairs) → candidate relation phrases
-- Same BERTopic clustering step → emergent relation labels
-- GLiREL → zero-shot relation extraction between GLiNER's entities, using those discovered labels, with confidence scores
+- spaCy dependency parsing (verb lemma + preposition, e.g. `obtained from`) → candidate relation phrases
+- Kept only when an endpoint touches a known topic; new endpoints become topics to expand, up to `max_depth`
+- GLiNER extracts the final relations between the extracted entities using the discovered relation labels, with confidence scores
 
-**Graph comparison**
+**Graph comparison** (planned)
 - Weisfeiler-Lehman (WL) kernel, structural invariants, and/or semantic embedding similarity to score how much a new mini-graph diverges structurally from the accumulated topic graph
 - New nodes / new edges relative to the accumulated graph become the raw originality signal
 
 ## Constraints / design choices
 
-- No paid per-token LLM APIs in the pipeline; local/open models only (GLiNER, GLiREL — Apache 2.0; spaCy — MIT)
-- Labels (both entity and relation types) are discovered from the data via clustering, not hand-defined
+- No paid per-token LLM APIs in the pipeline; local/open models only (GLiNER — Apache 2.0; spaCy — MIT)
+- Labels (both entity and relation types) are discovered from the data via deterministic dependency parsing, not hand-defined
+- Discovery is deterministic and LLM-free (a small local model hallucinated evidence, so it was dropped from discovery)
 - One accumulated graph per topic, growing over time as new content is processed — the comparison only gets more meaningful as the corpus grows
-
-## Open questions
-
-- **Source feed**: where does new content come from — arXiv, RSS, manual upload, scraping Medium/LinkedIn? Not solved yet.
-- **Granularity**: too fine-grained and everything looks "new"; too coarse and nothing ever registers as novel. Will likely need iteration once there's real data flowing through.
-- **Scope of the accumulated graph**: per topic, per author, or both? An originality score per author (% of their output that maps to already-seen nodes/edges) is an interesting downstream product on top of the same graph.
 
 ## Status
 
-Early-stage idea, not yet implemented. Design largely reuses techniques already prototyped in a separate insurance-claims knowledge graph project (same extraction pipeline, same graph-comparison techniques), applied here to a different domain.
+Implemented: Adaptive KeyBERT seeding, LLM-free topic-guided discovery (spaCy), and the discovery-driven GLiNER assembly that builds the final knowledge graph. Current default corpus: `backend/data/case_2/medium.txt`.
+
+Still open:
+- **GLiNER context truncation**: documents longer than ~1024 tokens are truncated; chunking the document before extraction is the planned fix.
+- **Source feed**: where does new content come from — arXiv, RSS, manual upload, scraping Medium/LinkedIn? Not solved yet.
+- **Granularity**: too fine-grained and everything looks "new"; too coarse and nothing ever registers as novel. Will likely need iteration once there's real data flowing through.
+- **Scope of the accumulated graph**: per topic, per author, or both? An originality score per author (% of their output that maps to already-seen nodes/edges) is an interesting downstream product on top of the same graph.
+- **Graph comparison (originality signal)**: the WL-kernel / embedding comparison against an accumulated topic graph is designed but not yet implemented.
+
+The extraction pipeline reuses techniques prototyped in a separate insurance-claims knowledge graph project, applied here to a different domain.

@@ -6,6 +6,7 @@ Experimenting with multiple approaches to knowledge graph construction from docu
 
 - Approach 1: spaCy/AutoPhrase + BERTopic + GLiNER
 - Approach 2: LLM...
+- Assembly pipeline (current): Adaptive KeyBERT seeds → LLM-free topic-guided discovery (spaCy) → GLiNER with the discovered taxonomy
 
 ## Installation
 
@@ -62,6 +63,9 @@ Download model (Qwen 0.6b)
 ollama pull qwen3:0.6b
 ```
 
+> The LLM is optional for the assembly pipeline: discovery is deterministic
+> (spaCy) and GLiNER runs locally. `qwen-demo` uses Ollama only.
+
 ## Project Structure
 
 ```text
@@ -69,54 +73,41 @@ ollama pull qwen3:0.6b
 ├── configs
 │   └── params.yaml
 ├── data
-│   └── case_1
-│       └── mortgage.txt
+│   └── case_2
+│       └── medium.txt
 ├── experiments
-│   └── exp_01_explore_docling.ipynb
+│   ├── exp_01_explore_docling.ipynb
+│   └── exp_02_qwen_versus_keybert.ipynb
 ├── models
 │   ├── all-MiniLM-L6-v2
-│   │   ├── 1_Pooling
-│   │   ├── README.md
-│   │   ├── config.json
-│   │   ├── config_sentence_transformers.json
-│   │   ├── data_config.json
-│   │   ├── model.safetensors
-│   │   ├── modules.json
-│   │   ├── onnx
-│   │   ├── openvino
-│   │   ├── pytorch_model.bin
-│   │   ├── rust_model.ot
-│   │   ├── sentence_bert_config.json
-│   │   ├── special_tokens_map.json
-│   │   ├── tf_model.h5
-│   │   ├── tokenizer.json
-│   │   ├── tokenizer_config.json
-│   │   ├── train_script.py
-│   │   └── vocab.txt
+│   ├── en_core_web_sm
 │   └── gliner-relex-large-v0.5
-│       ├── README.md
-│       ├── added_tokens.json
-│       ├── gliner_config.json
-│       ├── model.bf16.safetensors
-│       ├── model.fp16.safetensors
-│       ├── model.safetensors
-│       ├── special_tokens_map.json
-│       ├── spm.model
-│       ├── tokenizer.json
-│       ├── tokenizer_config.json
-│       └── trainer_state.json
 ├── pyproject.toml
 ├── src
 │   └── kgraph
-│       ├── __init__.py
-│       ├── __pycache__
 │       ├── cli
+│       │   ├── assembly_demo.py     # assembly-demo
+│       │   ├── gliner_graph_demo.py # gliner-demo
+│       │   ├── graph_viz.py         # graph-viz
+│       │   ├── key_bert_demo.py     # kbert-demo
+│       │   ├── qwen_demo.py         # qwen-demo
+│       │   └── topic_discovery_demo.py # discovery-demo
+│       ├── discovery
+│       │   ├── assembly.py          # DiscoveryAssembly (discovery → GLiNER taxonomy)
+│       │   ├── dependency_relations.py
+│       │   └── topic_graph.py
 │       ├── extractors
+│       │   ├── gliner.py            # GLiNERGraph, add_entity/add_relation/find_entity
+│       │   ├── key_bert.py          # AdaptiveKeyBERT
+│       │   └── normalization.py     # canonical(), EntityMerger
 │       ├── graph
+│       │   └── config.py            # PipelineConfig, EntityMergingConfig
 │       ├── ingestion
 │       └── retriever
 └── uv.loc
 ```
+
+`output/` (assembly exports) is git-ignored.
 
 ## Usage
 
@@ -134,8 +125,17 @@ uv run discovery-demo
 
 ### Assembly: discovery → GLiNER
 
+Builds the final knowledge graph with the discovered taxonomy and exports it to JSON:
+
 ```sh
-uv run assembly-demo
+uv run assembly-demo                       # prints graph + writes output/kg_final.json
+uv run assembly-demo --output out/g.json   # custom export path
+```
+
+### Visualize the graph
+
+```sh
+uv run graph-viz output/kg_final.json      # writes output/kg_final.json.html
 ```
 
 ### Gliner + KnowledgeGraph + Retrieval

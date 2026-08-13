@@ -30,7 +30,6 @@ class LLMConfig(BaseModel):
 
 class DiscoveryConfig(BaseModel):
     spacy_model: str = "en_core_web_sm"
-    pronouns: list[str] = []
     determiners: list[str] = []
     max_depth: int = 2
     max_relations: int = 100
@@ -38,6 +37,11 @@ class DiscoveryConfig(BaseModel):
 class ThresholdConfig(BaseModel):
     entity: float
     relation: float
+
+class EntityMergingConfig(BaseModel):
+    enabled: bool = True
+    threshold: float = 0.85
+    model: str = "models/all-MiniLM-L6-v2"
 
 class PipelineConfig(BaseModel):
     data_source: DataSourceConfig
@@ -48,6 +52,7 @@ class PipelineConfig(BaseModel):
     keyword_extractor: ExtractorConfig
     llm: LLMConfig
     discovery: DiscoveryConfig = DiscoveryConfig()
+    entity_merging: EntityMergingConfig = EntityMergingConfig()
 
 def load_pipeline_config(path: str) -> PipelineConfig:
     with open(path) as f:

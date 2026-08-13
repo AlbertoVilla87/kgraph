@@ -6,13 +6,6 @@ from spacy.tokens import Doc, Span, Token
 
 from kgraph.discovery.schemas import DiscoveredRelation
 
-DEFAULT_PRONOUN_LEMMAS = {
-    "i", "you", "he", "she", "it", "we", "they",
-    "me", "him", "her", "us", "them",
-    "my", "your", "his", "its", "our", "their",
-    "this", "that", "which",
-}
-
 DEFAULT_DETERMINERS = ("the", "a", "an")
 
 
@@ -28,18 +21,18 @@ class DependencyRelationExtractor:
     def __init__(
         self,
         model: str = "en_core_web_sm",
-        pronouns: list[str] | None = None,
         determiners: list[str] | None = None,
     ):
         self.nlp = spacy.load(model)
-        self.pronouns = DEFAULT_PRONOUN_LEMMAS | set(pronouns or [])
+
         dets = sorted(
             set(DEFAULT_DETERMINERS) | set(determiners or []),
             key=len,
             reverse=True,
         )
         self._leading_det = re.compile(
-            r"^(" + "|".join(map(re.escape, dets)) + r")\s+", re.IGNORECASE
+            r"^(" + "|".join(map(re.escape, dets)) + r")\s+",
+            re.IGNORECASE,
         )
 
     def extract(self, doc: str) -> List[DiscoveredRelation]:
@@ -157,7 +150,7 @@ class DependencyRelationExtractor:
         return result
 
     def _is_pronoun(self, tok: Token) -> bool:
-        return tok.pos_ == "PRON" or tok.lemma_.lower() in self.pronouns
+        return tok.pos_ == "PRON"
 
     @staticmethod
     def _is_named(tok: Token) -> bool:
