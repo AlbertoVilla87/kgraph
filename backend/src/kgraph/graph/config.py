@@ -5,8 +5,10 @@ from typing import Tuple
 
 class DataSourceConfig(BaseModel):
     type: str
-    folder: str
-    file_type: str
+    folder: str = ""
+    file_type: str = ""
+    query: str | None = None
+    max_results: int = 100
 
 class NERConfig(BaseModel):
     name: str

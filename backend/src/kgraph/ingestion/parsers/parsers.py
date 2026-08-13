@@ -5,6 +5,9 @@ from docling.document_converter import DocumentConverter
 def parse_txt(path: Path) -> tuple[str, dict]:
     return path.read_text(), {}
 
+def parse_markdown(path: Path) -> tuple[str, dict]:
+    return parse_txt(path)
+
 def parse_json(path: Path) -> tuple[str, dict]:
     data = json.loads(path.read_text())
     text = data.get("text", "")
@@ -23,6 +26,7 @@ def parse_pdf(path: Path) -> tuple[str, dict]:
 
 PARSERS = {
     "txt": parse_txt,
+    "md": parse_markdown,
     "json": parse_json,
     "csv": parse_csv,
     "pdf": parse_pdf

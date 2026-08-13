@@ -52,8 +52,9 @@ The "café recalentado" case — a post using different vocabulary to say someth
 
 ## Pipeline
 
-**Sources (planned)**
-- arXiv, IEEE (and similar) harvesters fetch documents for a topic query and feed the pipeline; the corpus is what defines the "state of the art" window.
+**Sources (implemented: arXiv)**
+- **arXiv harvester** (`backend/src/kgraph/ingestion/arxiv.py`): topic query → `RawDocument`s with abstracts and metadata (title, authors, dates, `arxiv_id`, URLs), or full text via PDF download + docling parsing (`arxiv-demo --fulltext` writes `<arxiv_id>.md` per paper, re-feedable with `data_source.file_type: md`)
+- IEEE and similar sources plug in as extra `DataSource` implementations (planned)
 
 **Concept (entity) extraction**
 - Adaptive KeyBERT → candidate topic seeds per document (adaptive count via score elbow)
@@ -80,10 +81,10 @@ The "café recalentado" case — a post using different vocabulary to say someth
 
 ## Status
 
-Implemented: Adaptive KeyBERT seeding, LLM-free topic-guided discovery (spaCy), and the discovery-driven GLiNER assembly that builds the final knowledge graph. Current default corpus: `backend/data/case_2/medium.txt`.
+Implemented: the **arXiv harvester** (`arxiv-demo`, abstracts or full text), Adaptive KeyBERT seeding, LLM-free topic-guided discovery (spaCy), and the discovery-driven GLiNER assembly that builds the final knowledge graph. Current default corpus: `backend/data/case_2/medium.txt`.
 
 Still open:
-- **Source feed**: arXiv/IEEE harvesters are designed but not implemented — the current pipeline reads a local folder (`data_source` in `params.yaml`).
+- **Source feed**: IEEE (and similar) harvesters are not implemented; the pipeline can read a local folder (`data_source` in `params.yaml`) or fetch from arXiv (`data_source.type: arxiv`).
 - **GLiNER context truncation**: documents longer than ~1024 tokens are truncated; chunking the document before extraction is the planned fix.
 - **Accumulated graph**: nodes/edges accumulate per topic across documents; today each run builds a fresh graph from one corpus.
 - **Originality/gap signals**: the WL-kernel / embedding comparison against an accumulated topic graph, and the GLiNER zero-shot idea check, are designed but not yet implemented.

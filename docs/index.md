@@ -22,14 +22,15 @@ A tool to know the **state of the art of any topic** from the research sources t
 - **GLiNER-compatible labels**: multi-word taxonomy is underscore-joined (`dumping papers` → `dumping_papers`) because GLiNER tokenizes labels on whitespace.
 - **Entity normalization & merging** (`kgraph/extractors/normalization.py`): `canonical()` strips case/whitespace/leading articles and `EntityMerger` collapses token-subset near-duplicates (`model` ⊆ `reasoning model`) when `entity_merging.enabled` is set in `params.yaml`.
 - **Mention dedup fix**: the same entity extracted multiple times no longer double-counts its mentions.
-- **Tooling**: `assembly-demo --output` exports `kg_final.json`; `graph-viz` renders it as an interactive HTML (vis-network).
+- **Sources**: the **arXiv harvester** (`kgraph/ingestion/arxiv.py`, `arxiv-demo`) is implemented — a topic query returns `RawDocument`s with abstracts, or full text via PDF download + docling parsing; IEEE and similar sources are planned.
+- **Tooling**: `assembly-demo --output` exports `kg_final.json`; `graph-viz` renders it as an interactive HTML (vis-network); `arxiv-demo` harvests papers from arXiv.
 - **Known caveat**: GLiNER truncates documents longer than its 1024-token context (warning at `processor.py`); chunking is the planned fix.
 
 ### The vision (this branch)
 
 `ft/state_of_the_art` frames the tool around the state-of-the-art use case:
 
-- **Sources**: arXiv and IEEE harvesters that fetch documents for a topic query (planned; the current pipeline reads a local folder).
+- **Sources**: arXiv and IEEE harvesters that fetch documents for a topic query (arXiv implemented; IEEE planned — the pipeline can also read a local folder).
 - **Accumulated topic graph**: one graph per topic that grows as documents are added, instead of a fresh graph per run.
 - **Originality signal**: compare a new paper/idea against the accumulated graph (WL-kernel / embeddings).
 - **Gap discovery**: rare/absent concepts and relations become candidate unexplored directions.
