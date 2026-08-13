@@ -279,3 +279,27 @@ These were explored earlier and remain in the codebase, but are **not** part of 
 The discovery pipeline answers the follow-up question: since a 0.6b model cannot be trusted to ground evidence or relations, can a **deterministic dependency parse** grow the graph from KeyBERT seeds instead? The initial answer, with the mortgage case, is yes — at the cost of surface-level labels ("obtained from") versus the abstract ones an LLM would invent.
 
 The assembled pipeline then asks whether the discovered taxonomy is good enough to *drive* GLiNER. On the earlier `data/case_2/cot_rl.txt` corpus it was: the seeds `commonsense reasoning`/`model reason` grew into 9 discovered relations, and those labels made GLiNER extract 31 entities and 73 unique relations with no hand-written taxonomy. The current default corpus `data/case_2/medium.txt` produces a smaller taxonomy (3 relations → 2 final graph edges, see Stage 4) but the same self-tuning loop. The two-step design keeps discovery deterministic (stages 1–3) while letting the generalist extractor GLiNER do the final, higher-recall pass over the text.
+
+## Vision — from pipeline to state-of-the-art explorer
+
+The assembled pipeline is the extraction core of a larger goal: a **state-of-the-art explorer** for any research topic. The pieces below are designed but not yet implemented.
+
+### Sources (arXiv, IEEE)
+
+A topic query harvests documents from arXiv and IEEE (and similar sources) instead of a local folder. The harvested corpus defines the "state of the art" window for that topic.
+
+### Accumulated topic graph
+
+Today each `assembly-demo` run builds a fresh graph from one corpus. The target is an **accumulated graph per topic** that persists and grows as documents are added — nodes and edges carry frequency and confidence, so the map of the field only gets more precise over time.
+
+### Originality signal
+
+A new paper or idea, run through the same pipeline, is compared against the accumulated topic graph (WL-kernel, structural invariants, embeddings). Novel nodes, novel edges, and novel **combinations** of known nodes stand out structurally even when the wording overlaps with prior work.
+
+### Gap discovery
+
+Concepts and relations that are rare or absent in the accumulated graph are candidate **unexplored directions** — the tool becomes inspiration rather than just a search index.
+
+### GLiNER idea check
+
+Because GLiNER is zero-shot, **any idea the user thinks of becomes a label**. The tool can then ask the corpus directly: does this idea appear in any document, and how is it connected? That is a live originality check against the state of the art — the answer is grounded in the accumulated graph, not in an LLM's guess.
