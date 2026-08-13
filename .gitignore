@@ -8,6 +8,7 @@ models/
 *.egg-info
 site/
 output/
+backend/data/arxiv_pdfs
 
 # Virtual environments
 .venv

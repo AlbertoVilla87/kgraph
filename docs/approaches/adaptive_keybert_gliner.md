@@ -282,11 +282,24 @@ The assembled pipeline then asks whether the discovered taxonomy is good enough 
 
 ## Vision — from pipeline to state-of-the-art explorer
 
-The assembled pipeline is the extraction core of a larger goal: a **state-of-the-art explorer** for any research topic. The pieces below are designed but not yet implemented.
+The assembled pipeline is the extraction core of a larger goal: a **state-of-the-art explorer** for any research topic. The pieces below are the roadmap; the arXiv source is implemented, the rest are designed but not yet implemented.
 
 ### Sources (arXiv, IEEE)
 
 A topic query harvests documents from arXiv and IEEE (and similar sources) instead of a local folder. The harvested corpus defines the "state of the art" window for that topic.
+
+**arXiv is implemented** via `kgraph/ingestion/arxiv.py` (`ArxivSource`, built through `build_data_source` when `data_source.type` is `arxiv`):
+
+- `fetch()` — one abstract-level `RawDocument` per result, with paper metadata (title, authors, dates, `arxiv_id`, URLs) in `metadata`.
+- `download_pdfs()` — saves each PDF to a folder (idempotent), so the corpus can be cached for later analysis.
+- `fetch_fulltext()` — downloads the PDFs and parses them with docling (the same parser as the local PDF pipeline), writing `<arxiv_id>.md` next to each PDF; those files can be re-fed to the pipeline with `LocalFileSource(folder=..., file_type="md")`.
+
+```sh
+uv run arxiv-demo --query '"chain of thought" AND "reinforcement learning"' --max-results 20
+uv run arxiv-demo --fulltext --max-results 20 --download-dir data/arxiv_pdfs
+```
+
+IEEE and other sources plug in as additional `DataSource` implementations without touching the extraction pipeline.
 
 ### Accumulated topic graph
 

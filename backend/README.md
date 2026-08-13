@@ -17,7 +17,7 @@ A state-of-the-art explorer for any research topic. Papers from sources like arX
 | What is original? | Compare a new paper against the accumulated topic graph: novel nodes/edges stand out structurally (planned) |
 | What hasn't been explored? | Rare/absent concepts and relations in the graph are candidate gaps (planned) |
 
-> Sources (arXiv/IEEE harvesters) and the accumulated/originality layers are designed but not yet implemented — the pipeline currently reads a local corpus folder.
+> The arXiv harvester is implemented; IEEE and the accumulated/originality layers are designed but not yet implemented — the pipeline can also read a local corpus folder.
 
 ## Installation
 
@@ -97,6 +97,7 @@ ollama pull qwen3:0.6b
 ├── src
 │   └── kgraph
 │       ├── cli
+│       │   ├── arxiv_demo.py        # arxiv-demo (search arXiv, download PDFs, full-text)
 │       │   ├── assembly_demo.py     # assembly-demo
 │       │   ├── gliner_graph_demo.py # gliner-demo
 │       │   ├── graph_viz.py         # graph-viz
@@ -114,6 +115,10 @@ ollama pull qwen3:0.6b
 │       ├── graph
 │       │   └── config.py            # PipelineConfig, EntityMergingConfig
 │       ├── ingestion
+│       │   ├── arxiv.py             # ArxivSource (arXiv API → RawDocument + PDF download)
+│       │   ├── base.py              # DataSource interface
+│       │   ├── factory.py           # build_data_source() (local_files | arxiv)
+│       │   └── local_files.py
 │       └── retriever
 └── uv.loc
 ```
@@ -121,6 +126,18 @@ ollama pull qwen3:0.6b
 `output/` (assembly exports) is git-ignored.
 
 ## Usage
+
+### Arxiv demo
+
+Harvest papers from the arXiv API (abstracts) and optionally download + parse the full text:
+
+```sh
+uv run arxiv-demo                          # 5 CoT/RL papers, abstracts only
+uv run arxiv-demo --query '"LLM agents"' --max-results 10
+uv run arxiv-demo --fulltext --max-results 2   # download PDFs + docling full text
+```
+
+`--fulltext` downloads each PDF to `data/arxiv_pdfs/` (default) and writes the parsed markdown next to it as `<arxiv_id>.md` — that folder can be re-fed to the pipeline with a `data_source` of `local_files` and `file_type: md`.
 
 ### QWEN demo
 

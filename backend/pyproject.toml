@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "arxiv>=4.0.1",
     "docling>=2.113.0",
     "gliner>=0.2.28",
     "huggingface-hub>=1.26.0",
@@ -29,6 +30,7 @@ qwen-demo = "kgraph.cli.qwen_demo:main"
 discovery-demo = "kgraph.cli.topic_discovery_demo:main"
 assembly-demo = "kgraph.cli.assembly_demo:main"
 graph-viz = "kgraph.cli.graph_viz:main"
+arxiv-demo = "kgraph.cli.arxiv_demo:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
