@@ -85,7 +85,7 @@ Implemented: the **arXiv harvester** (`arxiv-demo`, abstracts or full text), Ada
 
 Still open:
 - **Source feed**: IEEE (and similar) harvesters are not implemented; the pipeline can read a local folder (`data_source` in `params.yaml`) or fetch from arXiv (`data_source.type: arxiv`).
-- **GLiNER context truncation**: documents longer than ~1024 tokens are truncated; chunking the document before extraction is the planned fix.
+- **GLiNER context truncation**: documents longer than ~1024 tokens are truncated. *Solved on `ft/segmentation`: the segmented extractor (`kgraph/segmentation/`) splits documents into section-aware, token-bounded segments with docling's `HierarchicalChunker`, runs GLiNER over all segments in parallel, and concatenates the results into one graph.*
 - **Accumulated graph**: nodes/edges accumulate per topic across documents; today each run builds a fresh graph from one corpus.
 - **Originality/gap signals**: the WL-kernel / embedding comparison against an accumulated topic graph, and the GLiNER zero-shot idea check, are designed but not yet implemented.
 - **Granularity**: too fine-grained and everything looks "new"; too coarse and nothing ever registers as novel. Will likely need iteration once there's real data flowing through.

@@ -4,12 +4,28 @@
 
 ```mermaid
 flowchart LR
-    A[(Document)] --> B[Adaptive KeyBERT]
-    B --> C[Seed topics]
-    C --> D[Topic-guided expansion]
-    D --> E[Discovered topics + relations]
-    E --> F[GLiNER with discovered taxonomy]
-    F --> G[(Final Knowledge Graph)]
+    subgraph ING["Ingestion (docling)"]
+        A[(PDF / MD)] --> B[DocumentConverter]
+        B --> C[(DoclingDocument)]
+    end
+    subgraph DIS["Discovery (LLM-free)"]
+        C -- text --> D[Adaptive KeyBERT seeds]
+        C -- text --> E[spaCy dependency relations]
+        D --> F[Topic-guided expansion BFS]
+        E --> F
+        F --> G[Taxonomy: entities + relations]
+    end
+    subgraph SEG["Segmentation"]
+        C --> H[HierarchicalChunker]
+        H --> I[Section chunks + heading paths]
+        I --> J[Token-bounded segments + overlap]
+    end
+    subgraph EXT["Extraction (parallel)"]
+        G --> K[GLiNER per segment, threads]
+        J --> K
+        K --> L[Concatenate + merge entities/relations]
+    end
+    L --> M[(Final Knowledge Graph)]
 ```
 
 ## Overview — the general approach
@@ -23,12 +39,13 @@ The design is a synthesis of two extremes that were both unsatisfactory on their
 
 The compromise is a **topic-guided expansion**: only the relations whose endpoints touch a *known* topic are kept, and each new endpoint becomes a topic that can be expanded in turn, up to a configured depth.
 
-The pipeline has four stages:
+The pipeline has five stages:
 
 1. **Seed stage** — `AdaptiveKeyBERT` extracts the initial topics from the document.
 2. **Relation extraction** — spaCy parses the dependency tree of every sentence and derives relations from its verbs: subject → verb(+preposition) → object.
 3. **Expansion** — a BFS from the seeds keeps only the relations touching a known topic, adds the other endpoint as a new node at `depth + 1`, and repeats until the queue runs dry or a limit is hit.
 4. **Assembly** — the discovered node texts and edge relations become the `entities`/`relations` labels passed to GLiNER, which extracts the final knowledge graph.
+5. **Segmentation** — long documents are split into token-bounded, section-aware segments (docling `HierarchicalChunker`) and GLiNER runs over every segment in parallel, concatenating the results into the graph (see Stage 5 below).
 
 The discovery pipeline deliberately does **not** use GLiNER, embeddings, or any predefined relation taxonomy — the relation labels *emerge from the text*. GLiNER is the last stage only, once the taxonomy has been discovered.
 
@@ -249,7 +266,53 @@ Karpathy --[describe (0.91, x4)]--> papers
 Safi Shamsi --[release (0.99, x4)]--> Graphify
 ```
 
-> **Known caveat — GLiNER truncates long documents.** GLiNER's context window is 1024 tokens; `medium.txt` is 2388 tokens, so the pipeline only analyzes the first half and emits a `UserWarning` (`Sentence of length 2388 has been truncated to 1024`). Entity/relation counts above are what survives in the analyzed window, not the full document. Chunking the document before extraction is the planned fix (see Open questions below).
+> **Known caveat — GLiNER truncates long documents.** GLiNER's context window is 1024 tokens; `medium.txt` is 2388 tokens, so the pipeline only analyzes the first half and emits a `UserWarning` (`Sentence of length 2388 has been truncated to 1024`). Entity/relation counts above are what survives in the analyzed window, not the full document. *This is now solved: the segmented extractor in Stage 5 below runs GLiNER over token-bounded, section-aware segments and concatenates the results, so the whole document is analyzed.*
+
+## Stage 5 — Segmentation: beating the 1024-token window
+
+GLiNER truncates any input longer than its context window (`max_len` from the model's `gliner_config.json`, 1024 for relex-large). `kgraph/segmentation/` splits the document into segments that fit the window, keeps the section structure, and runs the extraction in parallel:
+
+```mermaid
+flowchart LR
+    A[(PDF / MD)] --> B[docling DocumentConverter]
+    B --> C[HierarchicalChunker]
+    C --> D[Section chunks + heading paths]
+    D --> E[Token-bounded segments + overlap]
+    E --> F[GLiNER per segment, in parallel]
+    F --> G[Concatenate into GLiNERGraph]
+```
+
+1. **Docling owns the parsing.** `parse_pdf_full` / `parse_pdf_document` keep the structured `DoclingDocument` (previously only its markdown export was kept), and `LocalFileSource`/`ArxivSource` attach it to `RawDocument.docling_doc`.
+2. **`HierarchicalChunker`** (`docling_core.transforms.chunker`, the section feature you asked about) turns the document into layout/section chunks, each carrying its heading path (`meta.headings`). Chunks without a heading inherit the previous one, so captions/figures keep their section context.
+3. **`Segmenter`** (`kgraph/segmentation/chunker.py`) re-merges consecutive chunks up to the token budget (default `segmentation.max_tokens`, capped at the model's `max_len`), splits oversized sections at paragraph → sentence → token boundaries, prepends the heading path to each segment as context, and carries an `overlap_tokens` tail across boundaries so entities/relations spanning a cut are still seen. Token counting uses the GLiNER model's own tokenizer, so the budget matches the model exactly.
+4. **`SegmentedGraphExtractor`** (`kgraph/segmentation/extractor.py`) runs `model.inference` over every segment concurrently (one shared model, one Python thread per worker; torch releases the GIL during inference) and **concatenates** the per-segment `Entity`/`Relation` lists into a `GLiNERGraph`. The existing merge logic in `add_entity`/`add_relation` — canonical dedup, best-score, mention accumulation, relation `count` — is exactly the concatenation machinery: the same entity found in five sections becomes one node with five mentions, and each mention records its `segment` index for provenance.
+5. **Discovery stays global.** The topic graph (stages 1–3) is still built over the whole document, so the GLiNER taxonomy is one consistent label set; only the extraction is parallelized per segment (`DiscoveryAssembly.run(..., segmented=True)`).
+
+### Configuration
+
+Under `segmentation` in `backend/configs/params.yaml`:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Use the segmented extractor in `DiscoveryAssembly.run` |
+| `max_tokens` | `1024` | Token budget per segment (capped at the model's `max_len`) |
+| `overlap_tokens` | `64` | Overlap carried across segment boundaries so cross-cut entities/relations are captured |
+| `workers` | `0` | Parallel extraction workers; `0` = half the CPUs |
+
+### Demo output (medium case, segmented)
+
+The same `medium.txt` (2388 tokens, previously truncated to the first 1024) now produces **10 entities and 8 unique relations** instead of 4 entities / 2 relations — the tail of the document is analyzed instead of discarded. On a long arXiv paper (6589 tokens) the segmenter yields 10 section-aware segments processed in ~9 s and a graph whose nodes accumulate mentions from up to 5 different sections each.
+
+```sh
+uv run segmented-demo            # discovery → segmented GLiNER → output/kg_segmented.json
+uv run segmented-demo --show-segments   # print segment boundaries per document
+uv run segmented-demo --no-segmentation # fall back to the truncated whole-document path
+```
+
+### Known limitations
+
+- Threads share one GLiNER model; when `workers > 1` torch intra-op threads are pinned to 1 to avoid oversubscription. For very large corpora a process-per-worker (one model copy each) is the natural scaling step.
+- Cached `.md` files re-read from disk have no `DoclingDocument` (`docling_doc` is only attached on a fresh parse); the `Segmenter` falls back to a markdown-heading splitter that behaves identically for plain text.
 
 ## Other routes in the repo
 
@@ -263,7 +326,8 @@ These were explored earlier and remain in the codebase, but are **not** part of 
 | CLI entry | What it does |
 | --- | --- |
 | `uv run discovery-demo` | KeyBERT seeds + topic-guided expansion (spaCy), prints the graph by depth |
-| `uv run assembly-demo [--output path]` | Full pipeline: discovery then GLiNER with the discovered taxonomy; prints the final graph with scores and occurrence counts and exports it to `output/kg_final.json` by default |
+| `uv run assembly-demo [--output path]` | Full pipeline: discovery then GLiNER with the discovered taxonomy; prints the final graph with scores and occurrence counts and exports it to `output/kg_final.json` by default. **Uses the segmented extractor by default.** |
+| `uv run segmented-demo [--output path]` | Same assembled pipeline with explicit controls: `--show-segments` prints the per-document segment boundaries, `--no-segmentation` falls back to the whole-document (truncated) path |
 | `uv run graph-viz output/kg_final.json` | Renders a graph JSON into a standalone interactive HTML (vis-network), colored by `entity_type` with a legend |
 | `uv run kbert-demo` | Runs Adaptive KeyBERT over the configured document and prints the chosen keywords |
 | `uv run qwen-demo` | Runs Qwen3 concept extraction with structured output |

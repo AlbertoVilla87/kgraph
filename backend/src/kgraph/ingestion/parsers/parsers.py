@@ -17,11 +17,24 @@ def parse_json(path: Path) -> tuple[str, dict]:
 def parse_csv(path: Path) -> tuple[str, dict]:
     raise NotImplementedError("CSV parsing not implemented yet")
 
-def parse_pdf(path: Path) -> tuple[str, dict]:
+def parse_pdf_document(path: Path):
+    """Convert a PDF into a docling ``DoclingDocument``.
+
+    Keeping the structured document (instead of only its markdown export)
+    enables section-aware segmentation via docling's ``HierarchicalChunker``,
+    which the plain-text pipeline discards.
+    """
     converter = DocumentConverter()
     result = converter.convert(path)
-    doc = result.document
-    markdown_text = doc.export_to_markdown()
+    return result.document
+
+def parse_pdf_full(path: Path) -> tuple[object, str]:
+    """Convert a PDF and return ``(docling_document, markdown_text)``."""
+    doc = parse_pdf_document(path)
+    return doc, doc.export_to_markdown()
+
+def parse_pdf(path: Path) -> tuple[str, dict]:
+    _, markdown_text = parse_pdf_full(path)
     return markdown_text, {}
 
 PARSERS = {

@@ -45,6 +45,12 @@ class EntityMergingConfig(BaseModel):
     threshold: float = 0.85
     model: str = "models/all-MiniLM-L6-v2"
 
+class SegmentationConfig(BaseModel):
+    enabled: bool = True
+    max_tokens: int = 1024
+    overlap_tokens: int = 64
+    workers: int = 0
+
 class PipelineConfig(BaseModel):
     data_source: DataSourceConfig
     entities: list[str] = []
@@ -55,6 +61,7 @@ class PipelineConfig(BaseModel):
     llm: LLMConfig
     discovery: DiscoveryConfig = DiscoveryConfig()
     entity_merging: EntityMergingConfig = EntityMergingConfig()
+    segmentation: SegmentationConfig = SegmentationConfig()
 
 def load_pipeline_config(path: str) -> PipelineConfig:
     with open(path) as f:

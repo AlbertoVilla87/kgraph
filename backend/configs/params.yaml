@@ -62,6 +62,12 @@ entity_merging:
   threshold: 0.85
   model: "models/all-MiniLM-L6-v2"
 
+segmentation:
+  enabled: true
+  max_tokens: 1024
+  overlap_tokens: 64
+  workers: 0
+
 data_source:
   type: "local_files"
   folder: "data/case_2"

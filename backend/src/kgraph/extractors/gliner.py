@@ -1,15 +1,71 @@
 import networkx as nx
 import json
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Optional
 from kgraph.graph.models import Entity, Relation, RawDocument
 from kgraph.graph.config import PipelineConfig
 from kgraph.extractors.normalization import EntityMerger, canonical
 from gliner import GLiNER
 
 
+def extract_entities_relations(
+    model,
+    text: str,
+    entity_labels: List[str],
+    relation_labels: List[str],
+    entity_threshold: float,
+    relation_threshold: float,
+    doc_id: str,
+    segment_index: Optional[int] = None,
+) -> tuple[List[Entity], List[Relation]]:
+    """Run GLiNER on a single text and build ``Entity``/``Relation`` objects.
+
+    The shared helper is used both by the whole-document path and by the
+    segmented extractor, so entity/relation construction stays in one place.
+    """
+    entities_raw, relations_raw = model.inference(
+        texts=[text],
+        labels=entity_labels,
+        relations=relation_labels,
+        threshold=entity_threshold,
+        relation_threshold=relation_threshold,
+        return_relations=True,
+        flat_ner=False,
+    )
+
+    entities = []
+    for item in entities_raw[0]:
+        mention = {"doc_id": doc_id, "score": item["score"]}
+        if segment_index is not None:
+            mention["segment"] = segment_index
+        entities.append(
+            Entity(
+                id=Entity.generate_id(item["text"], item["label"]),
+                text=item["text"],
+                entity_type=item["label"],
+                score=item["score"],
+                source_doc=doc_id,
+                mentions=[mention],
+            )
+        )
+
+    relations = []
+    for item in relations_raw[0]:
+        relations.append(
+            Relation(
+                head_text=item["head"]["text"],
+                relation_type=item["relation"],
+                tail_text=item["tail"]["text"],
+                score=item["score"],
+                source_doc=doc_id,
+            )
+        )
+
+    return entities, relations
+
+
 class EntityRelationExtractor:
-    def __init__(self, config: PipelineConfig):
-        self.model = GLiNER.from_pretrained(config.ner.name)
+    def __init__(self, config: PipelineConfig, model=None):
+        self.model = model if model is not None else GLiNER.from_pretrained(config.ner.name)
         self.entity_labels = config.entities
         self.relation_labels = config.relations
         self.entity_threshold = config.thresholds.entity
@@ -18,48 +74,24 @@ class EntityRelationExtractor:
 
     def extract_from_document(self, doc: RawDocument) -> tuple[list[dict], list[dict]]:
         """Extract entities and relations from a single document in one pass."""
-        entities_raw, relations_raw = self.model.inference(
-            texts=[doc.content],
-            labels=self.entity_labels,
-            relations=self.relation_labels,
-            threshold=self.entity_threshold,
-            relation_threshold=self.relation_threshold,
-            return_relations=True,
-            flat_ner=False,
+        entities, relations = extract_entities_relations(
+            self.model,
+            doc.content,
+            self.entity_labels,
+            self.relation_labels,
+            self.entity_threshold,
+            self.relation_threshold,
+            doc_id=doc.id,
         )
         # Process entities with deduplication
-        entities = []
-        for item in entities_raw[0]:
-            entity_id = Entity.generate_id(item["text"], item["label"])
-            mention = {"doc_id": doc.id, "score": item["score"]}
-
-            if entity_id in self.entity_index:
-                self.entity_index[entity_id].mentions.append(mention)
+        new_entities = []
+        for entity in entities:
+            if entity.id in self.entity_index:
+                self.entity_index[entity.id].mentions.extend(entity.mentions)
             else:
-                entity = Entity(
-                    id=entity_id,
-                    text=item["text"],
-                    entity_type=item["label"],
-                    score=item["score"],
-                    source_doc=doc.id,
-                    mentions=[mention],
-                )
-                self.entity_index[entity_id] = entity
-                entities.append(entity)
-
-        # Process relations
-        relations = []
-        for item in relations_raw[0]:
-            relation = Relation(
-                head_text=item["head"]["text"],
-                relation_type=item["relation"],
-                tail_text=item["tail"]["text"],
-                score=item["score"],
-                source_doc=doc.id,
-            )
-            relations.append(relation)
-
-        return entities, relations
+                self.entity_index[entity.id] = entity
+                new_entities.append(entity)
+        return new_entities, relations
 
     def extract_from_corpus(
         self, documents: List[RawDocument]
@@ -85,8 +117,8 @@ class EntityRelationExtractor:
 class GLiNERGraph(EntityRelationExtractor):
     """In-memory knowledge graph using NetworkX."""
 
-    def __init__(self, my_config: PipelineConfig):
-        super().__init__(my_config)
+    def __init__(self, my_config: PipelineConfig, model=None):
+        super().__init__(my_config, model=model)
         self.graph = nx.MultiDiGraph()
         self.entity_text_index: Dict[str, List[str]] = {}
         self.entity_type_index: Dict[str, List[str]] = {}
