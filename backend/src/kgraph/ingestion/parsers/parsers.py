@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("DOCLING_INFERENCE_COMPILE_TORCH_MODELS", "false")
+
 import json
 from pathlib import Path
 from docling.document_converter import DocumentConverter

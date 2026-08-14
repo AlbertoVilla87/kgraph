@@ -1,6 +1,6 @@
 # Approach 1: Adaptive KeyBERT + Topic Discovery
 
-> Updated to reflect the assembled pipeline: KeyBERT provides the topic seeds, a deterministic **LLM-free** discovery pass (spaCy dependency parsing) expands the relations and new topics from those seeds, and the discovered topics/relations become the label taxonomy handed to GLiNER to build the final knowledge graph.
+> Updated to reflect the assembled pipeline: KeyBERT provides the topic seeds, a deterministic **LLM-free** discovery pass (spaCy dependency parsing) expands the relations and new topics from those seeds, and the discovered topics/relations become the label taxonomy handed to GLiNER to build the final knowledge graph. Discovery runs **per document section** (docling headings, markdown fallback), so each section contributes its own domain terms.
 
 ```mermaid
 flowchart LR
@@ -9,11 +9,12 @@ flowchart LR
         B --> C[(DoclingDocument)]
     end
     subgraph DIS["Discovery (LLM-free)"]
-        C -- text --> D[Adaptive KeyBERT seeds]
-        C -- text --> E[spaCy dependency relations]
-        D --> F[Topic-guided expansion BFS]
-        E --> F
-        F --> G[Taxonomy: entities + relations]
+        C --> D[Section split by headings]
+        D -- per section --> E[Adaptive KeyBERT seeds]
+        D -- per section --> F[spaCy dependency relations]
+        E --> G[Topic-guided expansion BFS]
+        F --> G
+        G --> T[Taxonomy: entities + relations]
     end
     subgraph SEG["Segmentation"]
         C --> H[HierarchicalChunker]
@@ -21,7 +22,7 @@ flowchart LR
         I --> J[Token-bounded segments + overlap]
     end
     subgraph EXT["Extraction (parallel)"]
-        G --> K[GLiNER per segment, threads]
+        T --> K[GLiNER per segment, threads]
         J --> K
         K --> L[Concatenate + merge entities/relations]
     end
@@ -41,8 +42,8 @@ The compromise is a **topic-guided expansion**: only the relations whose endpoin
 
 The pipeline has five stages:
 
-1. **Seed stage** — `AdaptiveKeyBERT` extracts the initial topics from the document.
-2. **Relation extraction** — spaCy parses the dependency tree of every sentence and derives relations from its verbs: subject → verb(+preposition) → object.
+1. **Seed stage** — `AdaptiveKeyBERT` extracts the initial topics from the document, **one section at a time** (docling heading paths; boilerplate like References is skipped via `discovery.skip_headings`) and the seeds are unioned across sections.
+2. **Relation extraction** — spaCy parses the dependency tree of every sentence of every section and derives relations from its verbs: subject → verb(+preposition) → object.
 3. **Expansion** — a BFS from the seeds keeps only the relations touching a known topic, adds the other endpoint as a new node at `depth + 1`, and repeats until the queue runs dry or a limit is hit.
 4. **Assembly** — the discovered node texts and edge relations become the `entities`/`relations` labels passed to GLiNER, which extracts the final knowledge graph.
 5. **Segmentation** — long documents are split into token-bounded, section-aware segments (docling `HierarchicalChunker`) and GLiNER runs over every segment in parallel, concatenating the results into the graph (see Stage 5 below).
@@ -198,6 +199,8 @@ Under `discovery` in `backend/configs/params.yaml`:
 | `determiners` | `[]` | Extra leading determiners stripped from spans, added to the English defaults (`the`, `a`, `an`) |
 | `max_depth` | 2 | Maximum hops from the seeds (how far the expansion may grow) |
 | `max_relations` | 100 | Hard cap on the number of graph edges |
+| `skip_headings` | `references, bibliography, acknowledgements, acknowledgments` | Section headings excluded from discovery (boilerplate) |
+| `max_seeds` | 25 | Cap on the unioned per-section seed pool handed to the expansion |
 
 The config also exposes an `entity_merging` block used by the assembly stage:
 
@@ -286,7 +289,7 @@ flowchart LR
 2. **`HierarchicalChunker`** (`docling_core.transforms.chunker`, the section feature you asked about) turns the document into layout/section chunks, each carrying its heading path (`meta.headings`). Chunks without a heading inherit the previous one, so captions/figures keep their section context.
 3. **`Segmenter`** (`kgraph/segmentation/chunker.py`) re-merges consecutive chunks up to the token budget (default `segmentation.max_tokens`, capped at the model's `max_len`), splits oversized sections at paragraph → sentence → token boundaries, prepends the heading path to each segment as context, and carries an `overlap_tokens` tail across boundaries so entities/relations spanning a cut are still seen. Token counting uses the GLiNER model's own tokenizer, so the budget matches the model exactly.
 4. **`SegmentedGraphExtractor`** (`kgraph/segmentation/extractor.py`) runs `model.inference` over every segment concurrently (one shared model, one Python thread per worker; torch releases the GIL during inference) and **concatenates** the per-segment `Entity`/`Relation` lists into a `GLiNERGraph`. The existing merge logic in `add_entity`/`add_relation` — canonical dedup, best-score, mention accumulation, relation `count` — is exactly the concatenation machinery: the same entity found in five sections becomes one node with five mentions, and each mention records its `segment` index for provenance.
-5. **Discovery stays global.** The topic graph (stages 1–3) is still built over the whole document, so the GLiNER taxonomy is one consistent label set; only the extraction is parallelized per segment (`DiscoveryAssembly.run(..., segmented=True)`).
+ 5. **Discovery runs per section, extraction is parallelized per segment.** The topic graph (stages 1–3) is built **per document section** — docling heading paths when available, markdown headings otherwise — and the seeds/relations are unioned into one consistent label set, so the taxonomy keeps the whole document's vocabulary instead of abstract-level boilerplate. Boilerplate sections are skipped via `discovery.skip_headings` (defaults to References/Bibliography/Acknowledgements) and the seed pool is capped by `discovery.max_seeds`. Only the extraction is parallelized per segment (`DiscoveryAssembly.run(..., segmented=True)`).
 
 ### Configuration
 

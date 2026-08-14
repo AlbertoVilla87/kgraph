@@ -143,6 +143,30 @@ def _markdown_blocks(text: str) -> List[_Block]:
     return blocks
 
 
+def _group_sections(blocks: List[_Block]) -> List[tuple[str, List[str]]]:
+    """Merge consecutive blocks sharing the same heading path into one section."""
+    sections: List[tuple[str, List[str]]] = []
+    for block in blocks:
+        if not block.text:
+            continue
+        if sections and sections[-1][1] == block.headings:
+            text, headings = sections[-1]
+            sections[-1] = (text + "\n\n" + block.text, headings)
+        else:
+            sections.append((block.text, block.headings))
+    return sections
+
+
+def docling_sections(doc) -> List[tuple[str, List[str]]]:
+    """Return ``(section_text, heading_path)`` pairs from a docling document."""
+    return _group_sections(_docling_blocks(doc))
+
+
+def markdown_sections(text: str) -> List[tuple[str, List[str]]]:
+    """Return ``(section_text, heading_path)`` pairs from markdown (heading-based fallback)."""
+    return _group_sections(_markdown_blocks(text))
+
+
 def _split_to_budget(text: str, budget: TokenBudget) -> Iterator[str]:
     """Split ``text`` into pieces of at most ``budget.max_tokens`` tokens.
 

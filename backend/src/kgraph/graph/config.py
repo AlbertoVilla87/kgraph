@@ -35,6 +35,13 @@ class DiscoveryConfig(BaseModel):
     determiners: list[str] = []
     max_depth: int = 2
     max_relations: int = 100
+    skip_headings: list[str] = [
+        "references",
+        "bibliography",
+        "acknowledgements",
+        "acknowledgments",
+    ]
+    max_seeds: int = 25
 
 class ThresholdConfig(BaseModel):
     entity: float

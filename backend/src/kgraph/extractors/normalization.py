@@ -8,10 +8,11 @@ LEADING_ARTICLES = ("the ", "a ", "an ")
 def canonical(text: str) -> str:
     """Normalize an entity text: lowercase, collapse whitespace, strip leading articles.
 
-    ``"A CoT-trained model"`` and ``"CoT-trained model"`` both canonicalize to
-    ``"cot-trained model"``.
+    Hyphen- and underscore-separated tokens are treated as space-separated, so
+    ``"Chain-of-Thought Hub"`` and ``"chain-of-thought-hub"`` share a canonical
+    form.
     """
-    norm = re.sub(r"\s+", " ", text.strip().lower())
+    norm = re.sub(r"[\s\-_]+", " ", text.strip().lower())
 
     for article in LEADING_ARTICLES:
         if norm.startswith(article):
