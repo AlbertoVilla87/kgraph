@@ -8,7 +8,7 @@ from arxiv import SortCriterion
 
 from kgraph.graph.models import RawDocument
 from kgraph.ingestion.base import DataSource
-from kgraph.ingestion.parsers.parsers import parse_pdf
+from kgraph.ingestion.parsers.parsers import parse_pdf_full
 
 _SORT_BY = {
     "relevance": SortCriterion.Relevance,
@@ -87,7 +87,9 @@ class ArxivSource(DataSource):
         Each parsed document is written next to its PDF as
         ``<arxiv_id>.md`` (skipped on failure), so the corpus can be re-fed to
         the pipeline with a ``LocalFileSource(folder=..., file_type="md")``.
-        Returns the ``RawDocument``s in memory.
+        Returns the ``RawDocument``s in memory; freshly parsed documents also
+        carry the docling ``DoclingDocument`` (``docling_doc``) so the
+        section-aware segmenter can use the document hierarchy.
         """
         out_dir = Path(download_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -97,9 +99,10 @@ class ArxivSource(DataSource):
             if path is None:
                 continue
             text_path = path.with_suffix(".md")
+            docling_doc = None
             if not text_path.exists():
                 try:
-                    text, _ = parse_pdf(path)
+                    docling_doc, text = parse_pdf_full(path)
                 except Exception:
                     continue
                 text_path.write_text(text, encoding="utf-8")
@@ -111,6 +114,7 @@ class ArxivSource(DataSource):
                     content=text,
                     source="arxiv_fulltext",
                     metadata=self._metadata(result),
+                    docling_doc=docling_doc,
                 )
             )
         return parsed

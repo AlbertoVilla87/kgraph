@@ -42,7 +42,7 @@ keyword_extractor:
   n_grams: [1, 2]
   adaptive:
     min_k: 2
-    max_k: 5
+    max_k: 10
     words_per_kw: 40
     score_floor: 0.2
     max_candidates: 5
@@ -56,13 +56,25 @@ discovery:
   determiners: []
   max_depth: 2
   max_relations: 100
+  skip_headings:
+    - "references"
+    - "bibliography"
+    - "acknowledgements"
+    - "acknowledgments"
+  max_seeds: 25
 
 entity_merging:
   enabled: true
   threshold: 0.85
   model: "models/all-MiniLM-L6-v2"
 
+segmentation:
+  enabled: true
+  max_tokens: 1024
+  overlap_tokens: 64
+  workers: 0
+
 data_source:
   type: "local_files"
-  folder: "data/case_2"
-  file_type: "txt"
+  folder: "data/arxiv_pdfs"
+  file_type: "pdf"

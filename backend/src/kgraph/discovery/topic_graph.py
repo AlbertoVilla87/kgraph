@@ -1,6 +1,6 @@
 import json
 from collections import deque
-from typing import List
+from typing import Dict, List, Tuple
 
 import networkx as nx
 
@@ -8,6 +8,7 @@ from kgraph.discovery.dependency_relations import DependencyRelationExtractor
 from kgraph.extractors.key_bert import AdaptiveKeyBERT
 from kgraph.graph.config import PipelineConfig
 from kgraph.graph.models import RawDocument
+from kgraph.segmentation.chunker import docling_sections, markdown_sections
 
 
 class TopicGraph:
@@ -18,6 +19,12 @@ class TopicGraph:
     known topic; the other endpoint becomes a new node that is expanded in
     turn, up to ``max_depth``. The graph therefore grows from the seeds without
     drowning in every subject-verb-object triple of the document.
+
+    Discovery runs per document section (docling headings, markdown fallback)
+    and the seeds/relations are unioned, so each section contributes its own
+    domain terms instead of a single whole-document keyword pool dominated by
+    abstract-level discourse. Boilerplate sections (references, ...) are
+    skipped via ``discovery.skip_headings``.
     """
 
     def __init__(self, config: PipelineConfig):
@@ -32,9 +39,33 @@ class TopicGraph:
         self.relations: List = []
 
     def build(self, documents: List[RawDocument]) -> nx.MultiDiGraph:
-        doc = documents[0].content
-        self.seeds = [kw for kw, _ in self.keybert.extract(doc)]
-        self.relations = self.extractor.extract(doc)
+        doc = documents[0]
+        sections = _document_sections(doc)
+        sections = [
+            (text, headings)
+            for text, headings in sections
+            if not self._is_skipped(headings)
+        ]
+        if not sections:
+            sections = [(doc.content, [])]
+
+        seeds: Dict[str, float] = {}
+        relations: List = []
+        for text, _headings in sections:
+            if not text.split():
+                continue
+            for keyword, score in self.keybert.extract(text):
+                key = keyword.strip().lower()
+                if key and score > seeds.get(key, float("-inf")):
+                    seeds[key] = score
+            relations.extend(self.extractor.extract(text))
+
+        self.relations = _dedup_relations(relations)
+        ranked = sorted(seeds.items(), key=lambda kv: kv[1], reverse=True)
+        self.seeds = [
+            keyword
+            for keyword, _ in ranked[: self.config.discovery.max_seeds]
+        ]
 
         for seed in self.seeds:
             self._add_node(seed, depth=0)
@@ -104,6 +135,10 @@ class TopicGraph:
     def _key(text: str) -> str:
         return text.strip().lower()
 
+    def _is_skipped(self, headings: List[str]) -> bool:
+        skip = [s.lower() for s in self.config.discovery.skip_headings]
+        return any(s in h.lower() for h in headings for s in skip)
+
     def export_to_json(self, filepath: str) -> None:
         data = {
             "seeds": self.seeds,
@@ -115,3 +150,27 @@ class TopicGraph:
         }
         with open(filepath, "w") as f:
             json.dump(data, f, indent=2, default=str)
+
+
+def _document_sections(doc: RawDocument) -> List[Tuple[str, List[str]]]:
+    """Return ``(text, heading_path)`` sections, docling first, markdown fallback."""
+    if doc.docling_doc is not None:
+        try:
+            sections = docling_sections(doc.docling_doc)
+            if sections:
+                return sections
+        except Exception:
+            pass
+    return markdown_sections(doc.content)
+
+
+def _dedup_relations(relations: List) -> List:
+    seen: set = set()
+    deduped = []
+    for rel in relations:
+        key = (rel.source.lower(), rel.relation, rel.target.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(rel)
+    return deduped

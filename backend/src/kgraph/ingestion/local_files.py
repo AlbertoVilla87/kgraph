@@ -1,7 +1,7 @@
 from pathlib import Path
 from kgraph.ingestion.base import DataSource
 from kgraph.graph.models import RawDocument
-from kgraph.ingestion.parsers.parsers import PARSERS
+from kgraph.ingestion.parsers.parsers import PARSERS, parse_pdf_document
 
 class LocalFileSource(DataSource):
     def __init__(self, folder: str, file_type: str):
@@ -17,10 +17,14 @@ class LocalFileSource(DataSource):
         docs = []
         for path in self.folder.glob(f"*.{self.file_type}"):
             text, metadata = self.parser(path)
+            docling_doc = None
+            if self.file_type in ("pdf", "md"):
+                docling_doc = parse_pdf_document(path)
             docs.append(RawDocument(
                 id=path.stem,
                 content=text,
                 source=f"local_{self.file_type}",
                 metadata=metadata,
+                docling_doc=docling_doc,
             ))
         return docs

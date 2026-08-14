@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 import hashlib
-from typing import Dict, List
+from typing import Any, Dict, List
 
 @dataclass
 class Entity:
@@ -32,3 +32,4 @@ class RawDocument:
     content: str
     source: str
     metadata: Dict = field(default_factory=dict)
+    docling_doc: Any = None
