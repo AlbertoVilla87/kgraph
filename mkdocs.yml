@@ -1,5 +1,5 @@
-site_name: KG Builder Lab
-site_description: kg-builder-lab — experimenting with multiple approaches to knowledge graph construction from documents
+site_name: Astrolabe
+site_description: Astrolabe — a knowledge graph that maps the state of the art of a research topic, spots what is original, and surfaces the gaps
 site_author: Alberto
 
 theme:
@@ -27,12 +27,29 @@ theme:
     - content.code.copy
     - navigation.tabs
     - navigation.tabs.sticky
+    - navigation.expand
 
 nav:
   - Home: index.md
+  - Overview: overview.md
+  - Quickstart: quickstart.md
+  - Architecture:
+      - architecture/index.md
+      - Ingestion: architecture/ingestion.md
+      - Discovery: architecture/discovery.md
+      - Assembly: architecture/assembly.md
+      - Segmentation: architecture/segmentation.md
+      - Corpus & multi-document: architecture/corpus.md
+      - Data model & configuration: architecture/data-model.md
+  - Demos: demos.md
+  - Experiments:
+      - experiments/index.md
+      - Qwen vs. KeyBERT: experiments/exp_02_qwen_vs_keybert.md
+  - Roadmap: roadmap.md
+  - Reports: reports/index.md
   - Development / Tooling: development.md
-  - Approaches:
-      - Adaptive KeyBERT + Topic Discovery: approaches/adaptive_keybert_gliner.md
+  - References: references.md
+  - Troubleshooting: troubleshooting.md
 
 markdown_extensions:
   - admonition

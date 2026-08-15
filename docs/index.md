@@ -1,6 +1,6 @@
-# KG Builder Lab
+# Astrolabe
 
-## Introduction
+> **Astrolabe** — the instrument that mapped the heavens and guided exploration. This tool does the same for the state of the art of any research topic: it maps the field as a knowledge graph, lets you navigate it, and points at what is original and what is missing.
 
 A tool to know the **state of the art of any topic** from the research sources that matter (arXiv, IEEE, ...) and to act on it:
 
@@ -9,55 +9,59 @@ A tool to know the **state of the art of any topic** from the research sources t
 - **Find the gaps** — rare or absent concepts/relations are inspiration for unexplored directions.
 - **Check an idea instantly** — because GLiNER is zero-shot, any topic the user thinks of becomes a label, and we can ask whether it appears in the corpus and how it connects.
 
----
+The current pipeline is the **discovery-driven GLiNER assembly**: Adaptive KeyBERT seeds the topics, an LLM-free spaCy pass discovers the relations and grows the topic graph, and GLiNER extracts the final knowledge graph using exactly that discovered taxonomy — no hand-written labels.
 
-## Approaches
+## Status
 
--  Adaptive KeyBERT + Topic Discovery
--  Assembly pipeline: discovery-driven GLiNER taxonomy (current, `ft/assembly_gliner`)
+Implemented:
 
-### The assembled pipeline
+- **arXiv harvester** — topic query → abstracts or full text (PDF download + docling parsing)
+- **Adaptive KeyBERT seeding** — per document section, adaptive count via score elbow
+- **LLM-free topic-guided discovery** — spaCy dependency parsing, BFS expansion
+- **Discovery-driven GLiNER assembly** — the final knowledge graph from the discovered taxonomy
+- **Segmentation** — section-aware, token-bounded segments beat the 1024-token GLiNER window
+- **Multi-document corpus graph** — per-document taxonomies merged into a cross-document graph with a common/unique (originality) view
 
-- **Discovery → GLiNER closed loop** (`DiscoveryAssembly`): the topic graph discovered by stages 1–3 provides the entity/relation taxonomy handed to GLiNER — no hand-written labels.
-- **GLiNER-compatible labels**: multi-word taxonomy is underscore-joined (`dumping papers` → `dumping_papers`) because GLiNER tokenizes labels on whitespace.
-- **Entity normalization & merging** (`kgraph/extractors/normalization.py`): `canonical()` strips case/whitespace/leading articles and `EntityMerger` collapses token-subset near-duplicates (`model` ⊆ `reasoning model`) when `entity_merging.enabled` is set in `params.yaml`.
-- **Mention dedup fix**: the same entity extracted multiple times no longer double-counts its mentions.
-- **Segmentation** (`kgraph/segmentation/`): long documents are split into token-bounded, section-aware segments (docling's `HierarchicalChunker` for PDFs/markdown) and GLiNER runs over every segment **in parallel**, concatenating the results into one graph — no more 1024-token truncation. `segmented-demo` runs the assembled pipeline with segmentation.
-- **Sources**: the **arXiv harvester** (`kgraph/ingestion/arxiv.py`, `arxiv-demo`) is implemented — a topic query returns `RawDocument`s with abstracts, or full text via PDF download + docling parsing; IEEE and similar sources are planned.
-- **Tooling**: `assembly-demo --output` exports `kg_final.json`; `graph-viz` renders it as an interactive HTML (vis-network); `arxiv-demo` harvests papers from arXiv.
-- **Known caveat**: GLiNER truncates documents longer than its 1024-token context (warning at `processor.py`); chunking is the planned fix. *Implemented in `ft/segmentation` via `kgraph/segmentation/` — see the segmentation section.*
+Planned / designed:
 
-### The vision (this branch)
+- **Accumulated topic graph** — one graph per topic that grows as documents are added (today each run builds a fresh graph)
+- **Originality / gap signals** — WL-kernel / embedding comparison against the accumulated graph
+- **GLiNER idea check** — ask the corpus whether a user idea exists and how it connects
+- **IEEE harvester** (and similar sources) — arXiv is implemented, others plug in as `DataSource` implementations
 
-`ft/state_of_the_art` frames the tool around the state-of-the-art use case:
+See the [roadmap](roadmap.md) for the full picture.
 
-- **Sources**: arXiv and IEEE harvesters that fetch documents for a topic query (arXiv implemented; IEEE planned — the pipeline can also read a local folder).
-- **Accumulated topic graph**: one graph per topic that grows as documents are added, instead of a fresh graph per run.
-- **Originality signal**: compare a new paper/idea against the accumulated graph (WL-kernel / embeddings).
-- **Gap discovery**: rare/absent concepts and relations become candidate unexplored directions.
-- **GLiNER idea check**: a user-proposed idea, used as a GLiNER label, is tested against the corpus to see if it exists and how it connects.
+## Where to start
 
----
+| If you want to... | Go to |
+| --- | --- |
+| Understand the problem and the idea | [Overview](overview.md) |
+| Install and run the pipeline on a document | [Quickstart](quickstart.md) |
+| See the pipeline end to end | [Architecture](architecture/index.md) |
+| Run each CLI demo | [Demos](demos.md) |
+| Know what works and what's missing | [Roadmap](roadmap.md) |
+| Fix a problem | [Troubleshooting](troubleshooting.md) |
 
-## Installation
+## Repository layout
+
+```
+kgraph/
+├── mkdocs.yml                 # this documentation site
+├── docs/                      # documentation sources (what you are reading)
+├── backend/                   # Python package, demos, experiments, models, data
+│   ├── src/kgraph/            # the pipeline (ingestion, discovery, extractors, ...)
+│   ├── experiments/           # Jupyter notebooks
+│   ├── configs/params.yaml    # pipeline configuration
+│   ├── data/                  # corpus: case_1/, case_2/, arxiv_pdfs/
+│   └── models/                # local models (git-ignored)
+└── frontend/                  # experimental Streamlit app
+```
+
+Build and preview the docs locally (docs have their own environment at the repo root, decoupled from `backend/`):
 
 ```bash
-uv add mkdocs-material
+uv sync
 uv run mkdocs serve
 ```
 
-Open `http://127.0.0.1:8000` in your browser and you'll see the site running locally with live reload.
-
----
-
-## Project structure
-
-```
-doc/
-├── mkdocs.yml
-└── docs/
-    └── index.md
-```
-
-!!! tip "Adding more pages"
-    Create new `.md` files inside `docs/` and register them in the `nav:` section of `mkdocs.yml`.
+Open `http://127.0.0.1:8000`. To deploy elsewhere, `uv sync && uv run mkdocs build` produces a static site in `site/`.

@@ -1,0 +1,11 @@
+[project]
+name = "kgraph-docs"
+version = "0.1.0"
+description = "Astrolabe documentation site, built with mkdocs-material"
+requires-python = ">=3.12"
+dependencies = [
+    "mkdocs-material>=9.7.7",
+]
+
+[tool.uv]
+package = false
