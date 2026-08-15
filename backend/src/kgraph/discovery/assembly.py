@@ -1,9 +1,10 @@
-from typing import Dict, List
+from typing import List
 
 import networkx as nx
 
 from kgraph.discovery.topic_graph import TopicGraph
 from kgraph.extractors.gliner import GLiNERGraph
+from kgraph.extractors.normalization import canonical
 from kgraph.graph.config import build_pipeline_config, load_pipeline_config
 from kgraph.graph.models import RawDocument
 from kgraph.segmentation.extractor import SegmentedGraphExtractor
@@ -57,11 +58,24 @@ class DiscoveryAssembly:
 
     @staticmethod
     def _node_labels(graph: nx.MultiDiGraph) -> List[str]:
-        return [DiscoveryAssembly._label(data["text"]) for _, data in graph.nodes(data=True)]
+        labels: List[str] = []
+        seen: set[str] = set()
+        for _, data in graph.nodes(data=True):
+            key = canonical(data["text"])
+            if key in seen:
+                continue
+            seen.add(key)
+            labels.append(DiscoveryAssembly._label(data["text"]))
+        return labels
 
     @staticmethod
     def _edge_labels(graph: nx.MultiDiGraph) -> List[str]:
-        labels: Dict[str, None] = {}
+        labels: List[str] = []
+        seen: set[str] = set()
         for _, _, data in graph.edges(data=True):
-            labels.setdefault(DiscoveryAssembly._label(data["relation"]), None)
-        return list(labels)
+            key = canonical(data["relation"])
+            if key in seen:
+                continue
+            seen.add(key)
+            labels.append(DiscoveryAssembly._label(data["relation"]))
+        return labels

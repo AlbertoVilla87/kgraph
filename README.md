@@ -40,6 +40,10 @@ topic search (arXiv/IEEE) → concept extraction → relation extraction → acc
 
 The user-facing loop is powerful and cheap: because GLiNER is zero-shot, **any topic that occurs to the user becomes a label** and we can ask directly "does this idea appear in any document of the corpus, and how is it connected?" — a live originality check against the state of the art, plus the graph shows which related ideas exist around it.
 
+Multi-document view of a corpus (`uv run corpus-demo` in `backend/`): every node/edge is labeled **common** (present in ≥2 documents, green) or **unique** to one document (originality view):
+
+<img src="assets/multi_graph.jpg" alt="Multi-document corpus graph" width="100%">
+
 ### What "not new" looks like
 
 | Case | Node (concept) | Edge (relation) | Interpretation |

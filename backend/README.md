@@ -60,6 +60,23 @@ rm -rf /tmp/en_core_web_sm.whl /tmp/en_core_web_sm_pkg
 `models/` is git-ignored; the path is configured via `discovery.spacy_model`
 in `configs/params.yaml`.
 
+#### Docling (PDF parsing)
+
+docling parses PDFs with ML models (layout + table structure) that are pulled
+from HuggingFace Hub. They are cached under `models/hub/` so parsing is fully
+offline (`HF_HUB_OFFLINE=1`); the cache path is set in `parsers.py` via
+`HUGGINGFACE_HUB_CACHE`. Download them once:
+
+```bash
+HUGGINGFACE_HUB_CACHE=models/hub uv run hf download docling-project/docling-layout-heron
+HUGGINGFACE_HUB_CACHE=models/hub uv run hf download docling-project/docling-models
+```
+
+> These two downloads populate `models/hub/models--docling-project--...` with
+> the Hub cache layout (refs/snapshots). Without them docling cannot convert
+> PDFs, and it must never be pointed at a live Hub — `HF_HUB_OFFLINE=1` is set
+> in `parsers.py` on purpose.
+
 #### LLM
 
 Install Ollama (macOS):
@@ -92,7 +109,8 @@ ollama pull qwen3:0.6b
 ├── models
 │   ├── all-MiniLM-L6-v2
 │   ├── en_core_web_sm
-│   └── gliner-relex-large-v0.5
+│   ├── gliner-relex-large-v0.5
+│   └── hub                 # docling models (HF cache layout, offline)
 ├── pyproject.toml
 ├── src
 │   └── kgraph
@@ -165,6 +183,25 @@ uv run assembly-demo --output out/g.json   # custom export path
 ```sh
 uv run graph-viz output/kg_final.json      # writes output/kg_final.json.html
 ```
+
+### Corpus graph: multi-document comparison
+
+Builds a cross-document graph from a folder of PDFs: per-document taxonomies
+(Adaptive KeyBERT → spaCy discovery → GLiNER with relations), then merges the
+graphs and labels every node/edge as **common** (present in ≥2 documents) or
+**unique** to a document (originality view):
+
+```sh
+uv run corpus-demo                                        # local data source
+uv run corpus-demo --fetch 5 --arxiv-query '"LLM agents"' # download arXiv PDFs first
+uv run corpus-demo --workers 4 --max-pages 10             # parallel + drop long PDFs
+uv run corpus-demo --output-json out/g.json --output-html out/g.html
+```
+
+The interactive HTML (vis-network) colors common nodes/edges in green and
+unique ones per document, with a summary/novelty panel and a per-document
+filter. Nodes without edges are not rendered. Progress is shown with tqdm
+bars for the three stages (docling parsing, taxonomy, GLiNER extraction).
 
 ### Gliner + KnowledgeGraph + Retrieval
 

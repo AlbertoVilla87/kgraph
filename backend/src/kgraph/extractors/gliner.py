@@ -31,9 +31,17 @@ def extract_entities_relations(
         return_relations=True,
         flat_ner=False,
     )
+    return (
+        _entities_from_raw(entities_raw[0], doc_id, segment_index),
+        _relations_from_raw(relations_raw[0], doc_id),
+    )
 
+
+def _entities_from_raw(
+    raw: List[dict], doc_id: str, segment_index: Optional[int] = None
+) -> List[Entity]:
     entities = []
-    for item in entities_raw[0]:
+    for item in raw:
         mention = {"doc_id": doc_id, "score": item["score"]}
         if segment_index is not None:
             mention["segment"] = segment_index
@@ -47,20 +55,20 @@ def extract_entities_relations(
                 mentions=[mention],
             )
         )
+    return entities
 
-    relations = []
-    for item in relations_raw[0]:
-        relations.append(
-            Relation(
-                head_text=item["head"]["text"],
-                relation_type=item["relation"],
-                tail_text=item["tail"]["text"],
-                score=item["score"],
-                source_doc=doc_id,
-            )
+
+def _relations_from_raw(raw: List[dict], doc_id: str) -> List[Relation]:
+    return [
+        Relation(
+            head_text=item["head"]["text"],
+            relation_type=item["relation"],
+            tail_text=item["tail"]["text"],
+            score=item["score"],
+            source_doc=doc_id,
         )
-
-    return entities, relations
+        for item in raw
+    ]
 
 
 class EntityRelationExtractor:

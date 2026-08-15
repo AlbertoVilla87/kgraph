@@ -39,6 +39,7 @@ class TopicGraph:
         self.relations: List = []
 
     def build(self, documents: List[RawDocument]) -> nx.MultiDiGraph:
+        self.graph = nx.MultiDiGraph()
         doc = documents[0]
         sections = _document_sections(doc)
         sections = [

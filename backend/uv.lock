@@ -1864,6 +1864,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "spacy" },
     { name = "streamlit" },
+    { name = "tqdm" },
 ]
 
 [package.metadata]
@@ -1885,6 +1886,7 @@ requires-dist = [
     { name = "pyyaml" },
     { name = "spacy", specifier = ">=3.7" },
     { name = "streamlit", specifier = ">=1.59.2" },
+    { name = "tqdm", specifier = ">=4.66" },
 ]
 
 [[package]]
