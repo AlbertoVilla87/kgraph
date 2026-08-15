@@ -1,3 +1,9 @@
+# Astrolabe
+
+An instrument that maps the state of the art of any research topic as a knowledge graph — and points at what is original and what is missing.
+
+> **Full technical docs:** the docs are their own project at the repo root (see `pyproject.toml`). Build and browse with `uv sync && uv run mkdocs serve`, or read the sources under [`docs/`](docs/).
+
 ## The problem
 
 Knowing the *state of the art* of any topic is hard. Research piles up fast (arXiv, IEEE, RSS feeds...) and most papers say the same thing in different words. Reading it all — or asking an LLM to summarize it — doesn't scale and doesn't accumulate: an LLM has no persistent memory of everything published on a topic, and lexical similarity misses cases where the *wording* is new but the *idea* isn't — or the reverse, where the wording is generic but the combination of ideas genuinely is new. On top of that, researchers need to spot what has **not** been done yet: the gaps worth exploring.

@@ -1,4 +1,6 @@
-# Knowledge Graph Builder Graph
+# Astrolabe — backend
+
+> **Full technical docs** (architecture, config reference, demos, experiments, roadmap, troubleshooting) live in the repo's documentation site — a standalone docs project at the repo root (`pyproject.toml`, own venv). Build it with `uv sync && uv run mkdocs serve` from the repo root, or read the sources under [`docs/`](../docs/). This README covers backend setup and the CLI demos.
 
 ## Overview
 
