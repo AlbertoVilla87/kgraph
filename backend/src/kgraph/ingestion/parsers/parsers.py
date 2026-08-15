@@ -1,10 +1,31 @@
 import os
+from pathlib import Path
 
+os.environ.setdefault(
+    "HUGGINGFACE_HUB_CACHE",
+    str(Path(__file__).resolve().parents[4] / "models" / "hub"),
+)
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("DOCLING_INFERENCE_COMPILE_TORCH_MODELS", "false")
 
 import json
-from pathlib import Path
 from docling.document_converter import DocumentConverter
+
+_converter = None
+
+
+def _get_converter() -> DocumentConverter:
+    """Return a process-wide docling converter, initialized once.
+
+    Initializing a converter downloads/checks the layout, table and OCR models
+    against HuggingFace Hub; with ``HF_HUB_OFFLINE=1`` the check is skipped and
+    the locally cached models are used. Reusing the converter avoids repeating
+    that setup for every document.
+    """
+    global _converter
+    if _converter is None:
+        _converter = DocumentConverter()
+    return _converter
 
 def parse_txt(path: Path) -> tuple[str, dict]:
     return path.read_text(), {}
@@ -28,7 +49,7 @@ def parse_pdf_document(path: Path):
     enables section-aware segmentation via docling's ``HierarchicalChunker``,
     which the plain-text pipeline discards.
     """
-    converter = DocumentConverter()
+    converter = _get_converter()
     result = converter.convert(path)
     return result.document
 
