@@ -1,21 +1,25 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-router = APIRouter()
+from kgraph.api.runner import run_analysis
+from kgraph.api.routers.analysis import _analyses
 
-_in_progress: dict[str, dict] = {}
-_results: dict[str, dict] = {}
+router = APIRouter()
 
 
 class AnalyzeRequest(BaseModel):
-    arxiv_id: str
+    topic: str
+    max_papers: int = 2
 
 
 class AnalysisStatus(BaseModel):
     id: str
     status: str
-    arxiv_id: str
-    progress: str | None = None
+    topic: str
+    progress: float = 0.0
+    current_step: str = ""
+    steps: list[dict] = []
+    error: str | None = None
 
 
 class TopicOut(BaseModel):
@@ -38,41 +42,55 @@ class RelationshipOut(BaseModel):
 
 class AnalysisResult(BaseModel):
     id: str
-    arxiv_id: str
-    title: str
-    authors: list[str]
-    published_at: str
+    topic: str
+    papers: list[dict]
     topics: list[TopicOut]
     relationships: list[RelationshipOut]
-    references: list[dict]
     stats: dict
 
 
 @router.post("/analyze", response_model=AnalysisStatus)
-def analyze_paper(req: AnalyzeRequest):
-    analysis_id = f"analysis_{req.arxiv_id.replace('.', '_')}"
-    _in_progress[analysis_id] = {
+def start_analysis(req: AnalyzeRequest):
+    analysis_id = f"analysis_{req.topic.replace(' ', '_').lower()}"
+    steps = [
+        {"key": "fetch", "label": "Fetching papers from arXiv", "status": "pending"},
+        {"key": "parse", "label": "Parsing documents", "status": "pending"},
+        {"key": "taxonomy", "label": "Building topic taxonomy", "status": "pending"},
+        {"key": "segment", "label": "Segmenting documents", "status": "pending"},
+        {"key": "extract", "label": "Extracting entities and relationships", "status": "pending"},
+        {"key": "merge", "label": "Merging cross-document graph", "status": "pending"},
+        {"key": "done", "label": "Analysis complete", "status": "pending"},
+    ]
+    _analyses[analysis_id] = {
         "id": analysis_id,
         "status": "pending",
-        "arxiv_id": req.arxiv_id,
-        "progress": "Queued",
+        "topic": req.topic,
+        "max_papers": req.max_papers,
+        "progress": 0.0,
+        "current_step": "",
+        "steps": steps,
+        "error": None,
     }
-    return AnalysisStatus(**_in_progress[analysis_id])
+
+    import threading
+    thread = threading.Thread(target=run_analysis, args=(analysis_id,), daemon=True)
+    thread.start()
+
+    return AnalysisStatus(**_analyses[analysis_id])
 
 
 @router.get("/{analysis_id}", response_model=AnalysisStatus)
 def get_status(analysis_id: str):
-    if analysis_id in _in_progress:
-        return AnalysisStatus(**_in_progress[analysis_id])
-    if analysis_id in _results:
-        return AnalysisStatus(
-            id=analysis_id, status="completed", arxiv_id=_results[analysis_id]["arxiv_id"]
-        )
-    raise HTTPException(status_code=404, detail="Analysis not found")
+    if analysis_id not in _analyses:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return AnalysisStatus(**_analyses[analysis_id])
 
 
 @router.get("/{analysis_id}/result", response_model=AnalysisResult)
 def get_result(analysis_id: str):
-    if analysis_id not in _results:
-        raise HTTPException(status_code=404, detail="Analysis not completed yet")
-    return AnalysisResult(**_results[analysis_id])
+    if analysis_id not in _analyses:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    a = _analyses[analysis_id]
+    if a["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Analysis not completed yet")
+    return AnalysisResult(**a.get("result", {}))
