@@ -15,7 +15,7 @@ def run_analysis(analysis_id: str):
 
     topic = a["topic"]
     max_papers = a.get("max_papers", 2)
-    config_path = str(Path(__file__).resolve().parents[4] / "configs" / "params.yaml")
+    config_path = str(Path(__file__).resolve().parents[3] / "configs" / "params.yaml")
 
     def update(step_key: str, progress: float, status: str = "running"):
         a["status"] = status
