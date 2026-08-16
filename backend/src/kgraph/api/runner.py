@@ -30,7 +30,7 @@ def run_analysis(analysis_id: str):
                 s["status"] = "done"
 
     try:
-        from kgraph.cli.arxiv_demo import fetch_arxiv
+        from kgraph.ingestion.arxiv import ArxivSource
         from kgraph.ingestion.parsers.parsers import parse_document
         from kgraph.discovery.topic_graph import TopicGraph
         from kgraph.discovery.assembly import DiscoveryAssembly
@@ -42,7 +42,8 @@ def run_analysis(analysis_id: str):
         update("fetch", 0.05)
         time.sleep(0.3)
         config = load_config(config_path)
-        raw_docs = fetch_arxiv(topic, max_results=max_papers, config=config)
+        source = ArxivSource(query=topic, max_results=max_papers)
+        raw_docs = source.fetch()
         if not raw_docs:
             a["status"] = "error"
             a["error"] = f"No papers found for topic: {topic}"
@@ -138,7 +139,7 @@ def run_analysis(analysis_id: str):
         a["result"] = {
             "id": analysis_id,
             "topic": topic,
-            "papers": [{"id": doc.id, "title": doc.title} for doc in docs],
+            "papers": [{"id": doc.id, "title": doc.metadata.get("title", doc.id)} for doc in docs],
             "topics": nodes,
             "relationships": edges,
             "stats": summary,
