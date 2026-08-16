@@ -3,14 +3,13 @@
 import time
 import traceback
 from pathlib import Path
-from threading import Thread
 
-from kgraph.api.routers.analysis import _analyses
+from kgraph.api.state import analyses
 
 
 def run_analysis(analysis_id: str):
     """Run the full pipeline in a background thread."""
-    a = _analyses.get(analysis_id)
+    a = analyses.get(analysis_id)
     if not a:
         return
 
@@ -37,7 +36,6 @@ def run_analysis(analysis_id: str):
         from kgraph.discovery.assembly import DiscoveryAssembly
         from kgraph.segmentation.chunker import Segmenter
         from kgraph.segmentation.extractor import SegmentedGraphExtractor
-        from kgraph.corpus.merge import CorpusGraphBuilder
         from kgraph.graph.config import load_config
 
         # Step 1: Fetch papers

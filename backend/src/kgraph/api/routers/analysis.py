@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from kgraph.api.state import analyses
 from kgraph.api.runner import run_analysis
-from kgraph.api.routers.analysis import _analyses
 
 router = APIRouter()
 
@@ -61,7 +61,7 @@ def start_analysis(req: AnalyzeRequest):
         {"key": "merge", "label": "Merging cross-document graph", "status": "pending"},
         {"key": "done", "label": "Analysis complete", "status": "pending"},
     ]
-    _analyses[analysis_id] = {
+    analyses[analysis_id] = {
         "id": analysis_id,
         "status": "pending",
         "topic": req.topic,
@@ -76,21 +76,21 @@ def start_analysis(req: AnalyzeRequest):
     thread = threading.Thread(target=run_analysis, args=(analysis_id,), daemon=True)
     thread.start()
 
-    return AnalysisStatus(**_analyses[analysis_id])
+    return AnalysisStatus(**analyses[analysis_id])
 
 
 @router.get("/{analysis_id}", response_model=AnalysisStatus)
 def get_status(analysis_id: str):
-    if analysis_id not in _analyses:
+    if analysis_id not in analyses:
         raise HTTPException(status_code=404, detail="Analysis not found")
-    return AnalysisStatus(**_analyses[analysis_id])
+    return AnalysisStatus(**analyses[analysis_id])
 
 
 @router.get("/{analysis_id}/result", response_model=AnalysisResult)
 def get_result(analysis_id: str):
-    if analysis_id not in _analyses:
+    if analysis_id not in analyses:
         raise HTTPException(status_code=404, detail="Analysis not found")
-    a = _analyses[analysis_id]
+    a = analyses[analysis_id]
     if a["status"] != "completed":
         raise HTTPException(status_code=400, detail="Analysis not completed yet")
     return AnalysisResult(**a.get("result", {}))
