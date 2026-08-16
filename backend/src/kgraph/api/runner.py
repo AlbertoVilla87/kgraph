@@ -67,27 +67,29 @@ def run_analysis(analysis_id: str):
         time.sleep(0.2)
 
         # Build result
-        from kgraph.corpus import export_corpus_json
+        doc_ids = [doc.id for doc in raw_docs]
         nodes = []
         for nid, data in graph.nodes(data=True):
+            node_docs = list(data.get("docs", set()))
             nodes.append({
                 "id": nid,
                 "name": data.get("text", nid),
-                "type": data.get("type", "concept"),
+                "type": data.get("entity_type", "concept"),
                 "importance": round(data.get("score", 0.5) * 10, 1),
-                "source": "shared" if data.get("count", 1) > 1 else "main",
-                "documents": list(data.get("documents", [])),
+                "source": "shared" if len(node_docs) > 1 else "main",
+                "documents": node_docs,
             })
 
         edges = []
-        for u, v, data in graph.edges(data=True):
+        for u, v, key, data in graph.edges(keys=True, data=True):
+            edge_docs = list(data.get("docs", set()))
             edges.append({
-                "id": f"{u}_{v}",
+                "id": f"{u}_{v}_{key}",
                 "source": u,
                 "target": v,
-                "relation": data.get("relation", "related to"),
+                "relation": data.get("relation_type", "related to"),
                 "confidence": round(data.get("score", 0.5), 2),
-                "documents": list(data.get("documents", [])),
+                "documents": edge_docs,
             })
 
         update("done", 1.0, "completed")
