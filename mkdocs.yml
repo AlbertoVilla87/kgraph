@@ -46,7 +46,9 @@ nav:
       - experiments/index.md
       - Qwen vs. KeyBERT: experiments/exp_02_qwen_vs_keybert.md
   - Roadmap: roadmap.md
-  - Reports: reports/index.md
+  - Reports:
+      - reports/index.md
+      - Corpus pipeline timing: reports/corpus-timing.md
   - Development / Tooling: development.md
   - References: references.md
   - Troubleshooting: troubleshooting.md
