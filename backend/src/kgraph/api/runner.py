@@ -67,22 +67,36 @@ def run_analysis(analysis_id: str):
         time.sleep(0.2)
 
         # Build result
-        doc_ids = [doc.id for doc in raw_docs]
+        main_doc_id = raw_docs[0].id if raw_docs else None
+        ref_doc_ids = {doc.id for doc in raw_docs[1:]} if len(raw_docs) > 1 else set()
+
         nodes = []
         for nid, data in graph.nodes(data=True):
             node_docs = list(data.get("docs", set()))
+            if len(node_docs) > 1:
+                source = "shared"
+            elif main_doc_id and main_doc_id in data.get("docs", set()):
+                source = "main"
+            else:
+                source = "reference"
             nodes.append({
                 "id": nid,
                 "name": data.get("text", nid),
                 "type": data.get("entity_type", "concept"),
                 "importance": round(data.get("score", 0.5) * 10, 1),
-                "source": "shared" if len(node_docs) > 1 else "main",
+                "source": source,
                 "documents": node_docs,
             })
 
         edges = []
         for u, v, key, data in graph.edges(keys=True, data=True):
             edge_docs = list(data.get("docs", set()))
+            if len(edge_docs) > 1:
+                source = "shared"
+            elif main_doc_id and main_doc_id in data.get("docs", set()):
+                source = "main"
+            else:
+                source = "reference"
             edges.append({
                 "id": f"{u}_{v}_{key}",
                 "source": u,
