@@ -37,7 +37,7 @@ The five stages:
 2. **Discovery** — per document section: Adaptive KeyBERT seeds the topics, spaCy derives relations from dependency trees, and a BFS grows the topic graph from the seeds. The discovered nodes and edges become the label taxonomy. → [discovery](discovery.md)
 3. **Assembly** — GLiNER extracts entities and relations using exactly the discovered taxonomy (underscore-joined labels); entities are normalized and near-duplicates merged. → [assembly](assembly.md)
 4. **Segmentation** — long documents are split into section-aware, token-bounded segments and GLiNER runs over every segment in parallel, concatenating the results — beats GLiNER's 1024-token window. → [segmentation](segmentation.md)
-5. **Corpus merge** — scaling to a folder of documents: per-document taxonomies, parallel extraction, and a merged cross-document graph with a common/unique originality view. → [corpus](corpus.md)
+5. **Corpus merge** — scaling to a folder of documents: sequential per-document taxonomy + segmentation, then parallel extraction across all segments (thread pool), and a merged cross-document graph with a common/unique originality view. → [corpus](corpus.md)
 
 ## Module map
 
