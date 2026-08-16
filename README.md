@@ -2,6 +2,8 @@
 
 An instrument that maps the state of the art of any research topic as a knowledge graph — and points at what is original and what is missing.
 
+![ArXiv Graph Explorer — frontend skeleton](docs/assets/app_skeleton.png)
+
 > **Full technical docs:** the docs are their own project at the repo root (see `pyproject.toml`). Build and browse with `uv sync && uv run mkdocs serve`, or read the sources under [`docs/`](docs/).
 
 ## The problem
@@ -60,6 +62,24 @@ Multi-document view of a corpus (`uv run corpus-demo` in `backend/`): every node
 
 The "café recalentado" case — a post using different vocabulary to say something that's been said 50 times — shows up as **high structural similarity** (graph/WL-kernel level) even when **lexical similarity is low** (plain text embeddings). That's the gap this approach is meant to close: plain-text comparison alone misses it.
 
+## Frontend
+
+The **ArXiv Graph Explorer** is a React + TypeScript frontend that visualizes the knowledge graph interactively.
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Open `http://localhost:5173`. The frontend connects to the FastAPI backend at `localhost:8000`.
+
+Features:
+- **Overview** — paper input, stats, knowledge graph, shared vs unique insights
+- **Graph Explorer** — interactive Cytoscape.js graph with node inspection
+- **Shared Insights** — concepts and relationships shared across documents
+- **Originality** — unique contributions and potential research gaps
+- **Research Gaps** — missing topics, missing relationships, underexplored combinations
+- **Topic Search** — custom topic explorer with found/partial/not_found status
+
 ## Pipeline
 
 **Sources (implemented: arXiv)**
@@ -88,6 +108,18 @@ The "café recalentado" case — a post using different vocabulary to say someth
 - Labels (both entity and relation types) are discovered from the data via deterministic dependency parsing, not hand-defined
 - Discovery is deterministic and LLM-free (a small local model hallucinated evidence, so it was dropped from discovery)
 - One accumulated graph per topic, growing over time as new content is processed — the comparison only gets more meaningful as the corpus grows
+
+## Quick start
+
+```bash
+# Backend
+cd backend && uv sync && uv run uvicorn kgraph.api.main:app --reload --port 8000
+
+# Frontend (separate terminal)
+cd frontend && npm install && npm run dev
+```
+
+Open `http://localhost:5173`.
 
 ## Status
 
