@@ -5,6 +5,7 @@ description = "Astrolabe documentation site, built with mkdocs-material"
 requires-python = ">=3.12"
 dependencies = [
     "mkdocs-material>=9.7.7",
+    "mkdocs-jupyter>=0.25.1",
 ]
 
 [tool.uv]

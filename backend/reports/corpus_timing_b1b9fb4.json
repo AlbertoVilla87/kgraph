@@ -1,0 +1,165 @@
+{
+  "title": "Corpus demo \u2014 pipeline timing report",
+  "environment": {
+    "git_branch": "report/corpus-timing",
+    "git_commit": "b1b9fb4d8d1d06d4951f4c61b381050f9763c71b",
+    "git_short_commit": "b1b9fb4",
+    "git_dirty": true,
+    "timestamp": "2026-08-15 11:55:59 CEST",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "python": "3.12.13",
+    "cpu_count": 10,
+    "cwd": "/Users/albertovillamanrique/repositories/kgraph/backend",
+    "config_path": "/Users/albertovillamanrique/repositories/kgraph/backend/configs/params.yaml",
+    "data_source": {
+      "type": "local_files",
+      "folder": "data/arxiv_pdfs",
+      "file_type": "pdf",
+      "query": null,
+      "max_results": 100
+    },
+    "segmentation": {
+      "enabled": true,
+      "max_tokens": 1024,
+      "overlap_tokens": 64,
+      "workers": 0
+    },
+    "thresholds": {
+      "entity": 0.5,
+      "relation": 0.5
+    }
+  },
+  "phases_seconds": {
+    "fetch_parse": 20.5993,
+    "taxonomy": 38.6685,
+    "segmentation": 0.1764,
+    "extraction": 151.2115,
+    "merge": 0.0049,
+    "summarize": 0.0009,
+    "export_json": 0.014,
+    "render_html": 0.0032,
+    "model_load": 6.0448
+  },
+  "phase_details": {
+    "fetch_parse": {
+      "n_documents": 5
+    },
+    "model_load": {
+      "model": "models/gliner-relex-large-v0.5",
+      "workers": 5
+    },
+    "taxonomy": {
+      "per_document_s": {
+        "2308.13916v5": 6.1228,
+        "2404.17000v1": 8.0993,
+        "2408.02377v1": 5.0692,
+        "2408.13521v1": 6.5304,
+        "2604.04450v1": 12.8467
+      },
+      "label_counts": {
+        "2308.13916v5": [
+          121,
+          50
+        ],
+        "2404.17000v1": [
+          59,
+          26
+        ],
+        "2408.02377v1": [
+          53,
+          23
+        ],
+        "2408.13521v1": [
+          121,
+          52
+        ],
+        "2604.04450v1": [
+          170,
+          78
+        ]
+      }
+    },
+    "segmentation": {
+      "per_document_s": {
+        "2308.13916v5": 0.0331,
+        "2404.17000v1": 0.0297,
+        "2408.02377v1": 0.0241,
+        "2408.13521v1": 0.0229,
+        "2604.04450v1": 0.0664
+      },
+      "n_segments": 59
+    },
+    "extraction": {
+      "per_document_s": {
+        "2308.13916v5": 33.4787,
+        "2404.17000v1": 10.7763,
+        "2408.02377v1": 8.9455,
+        "2408.13521v1": 19.7501,
+        "2604.04450v1": 78.2542
+      },
+      "n_segments": 59,
+      "note": "Parallel run: per-segment times overlap; total_s is authoritative."
+    },
+    "merge": {},
+    "summarize": {},
+    "export_json": {},
+    "render_html": {}
+  },
+  "totals": {
+    "pipeline_seconds": 210.679,
+    "n_documents": 5,
+    "n_segments": 59,
+    "workers": 5
+  },
+  "graph_summary": {
+    "documents": [
+      "2308.13916v5",
+      "2404.17000v1",
+      "2408.02377v1",
+      "2408.13521v1",
+      "2604.04450v1"
+    ],
+    "total_nodes": 1318,
+    "total_edges": 255,
+    "common_nodes": 65,
+    "unique_nodes": 1253,
+    "common_edges": 0,
+    "unique_edges": 255,
+    "per_document": {
+      "2308.13916v5": {
+        "nodes_in_doc": 283,
+        "unique_nodes": 246,
+        "unique_edges": 26,
+        "novelty": 0.869
+      },
+      "2404.17000v1": {
+        "nodes_in_doc": 312,
+        "unique_nodes": 279,
+        "unique_edges": 71,
+        "novelty": 0.894
+      },
+      "2408.02377v1": {
+        "nodes_in_doc": 182,
+        "unique_nodes": 163,
+        "unique_edges": 104,
+        "novelty": 0.896
+      },
+      "2408.13521v1": {
+        "nodes_in_doc": 311,
+        "unique_nodes": 281,
+        "unique_edges": 48,
+        "novelty": 0.904
+      },
+      "2604.04450v1": {
+        "nodes_in_doc": 317,
+        "unique_nodes": 284,
+        "unique_edges": 6,
+        "novelty": 0.896
+      }
+    }
+  },
+  "artifacts": {
+    "corpus_json": "/Users/albertovillamanrique/repositories/kgraph/backend/reports/output/corpus_graph_b1b9fb4.json",
+    "corpus_html": "/Users/albertovillamanrique/repositories/kgraph/backend/reports/output/corpus_graph_b1b9fb4.html"
+  }
+}

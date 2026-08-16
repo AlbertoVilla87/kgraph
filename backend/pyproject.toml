@@ -14,6 +14,7 @@ dependencies = [
     "keybert>=0.9.0",
     "kneed>=0.8.5",
     "litellm>=1.96.0",
+    "matplotlib>=3.9",
     "network>=0.1",
     "networkx>=3.6.1",
     "numpy>=2.5.1",

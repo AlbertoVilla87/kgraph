@@ -27,11 +27,11 @@ What becomes easier, harder, or what we now accept as a trade-off.
 | Report | Status |
 | --- | --- |
 | Accumulated graph architecture (persistence, growth, frequency/confidence aggregation, WL-kernel comparison) | **pending** — the main open piece; see [Roadmap](../roadmap.md) |
-| Corpus demo run on a real arXiv topic | open |
+| Corpus pipeline timing (5 arXiv PDFs) | [notebook](corpus_timing.ipynb) |
 | Originality / gap-signal benchmark | blocked on the accumulated graph |
 
 ## Existing decisions worth documenting
 
-- Discovery is deterministic and LLM-free because a 0.6b model hallucinated evidence — see [Exp 02](../experiments/exp_02_qwen_vs_keybert.md) and [Discovery](../architecture/discovery.md).
+- Discovery is deterministic and LLM-free because a 0.6b model hallucinated evidence — see [Exp 02](../experiments/exp_02_qwen_versus_keybert.ipynb) and [Discovery](../architecture/discovery.md).
 - Segmentation keeps a structured `DoclingDocument` through the pipeline to enable section-aware chunking — see [Segmentation](../architecture/segmentation.md).
 - Cross-document novelty is currently lexical (canonical/containment merging) — see [Corpus](../architecture/corpus.md).

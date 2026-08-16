@@ -7,7 +7,9 @@ wheels/
 models/
 *.egg-info
 site/
-output/
+.cache/
+/output/
+backend/output/
 backend/data/arxiv_pdfs
 
 # Virtual environments
