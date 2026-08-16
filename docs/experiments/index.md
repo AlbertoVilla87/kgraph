@@ -7,7 +7,7 @@ Exploratory work lives in `backend/experiments/` as Jupyter notebooks. They are 
 | Experiment | Notebook | Question | Outcome |
 | --- | --- | --- | --- |
 | 01 — Explore docling | `exp_01_explore_docling.ipynb` | How does docling parse PDFs (layout, tables, markdown export)? | Setup stub; docling became the ingestion/parsing layer |
-| 02 — Qwen vs KeyBERT | `exp_02_qwen_versus_keybert.ipynb` | Which seed route feeds GLiNER better — document-local keywords or abstract LLM concepts? | KeyBERT stays grounded; Qwen abstracts further but the comparison is not yet conclusive. Led to adaptive KeyBERT + deterministic discovery. → [full write-up](exp_02_qwen_vs_keybert.md) |
+| 02 — Qwen vs KeyBERT | `exp_02_qwen_versus_keybert.ipynb` | Which seed route feeds GLiNER better — document-local keywords or abstract LLM concepts? | KeyBERT stays grounded; Qwen abstracts further but the comparison is not yet conclusive. Led to adaptive KeyBERT + deterministic discovery. → [notebook](exp_02_qwen_versus_keybert.ipynb) |
 
 ## Other routes in the repo
 

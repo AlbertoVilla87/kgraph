@@ -44,11 +44,11 @@ nav:
   - Demos: demos.md
   - Experiments:
       - experiments/index.md
-      - Qwen vs. KeyBERT: experiments/exp_02_qwen_vs_keybert.md
+      - Qwen vs. KeyBERT: experiments/exp_02_qwen_versus_keybert.ipynb
   - Roadmap: roadmap.md
   - Reports:
       - reports/index.md
-      - Corpus pipeline timing: reports/corpus-timing.md
+      - Corpus pipeline timing: reports/corpus_timing.ipynb
   - Development / Tooling: development.md
   - References: references.md
   - Troubleshooting: troubleshooting.md
@@ -64,6 +64,12 @@ markdown_extensions:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+  - mkdocs-jupyter:
+      execute: false
+      include_source: false
 
 extra_javascript:
   - https://unpkg.com/mermaid@11/dist/mermaid.min.js
