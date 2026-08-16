@@ -4,6 +4,7 @@ import cytoscape, { Core, EventObject } from 'cytoscape';
 export interface GraphNode {
   id: string;
   label: string;
+  name?: string;
   source: 'main' | 'reference' | 'shared';
   importance: number;
   type: string;
@@ -52,7 +53,7 @@ export default function KnowledgeGraph({
       ...nodes.map((n) => ({
         data: {
           id: n.id,
-          label: n.label,
+          label: n.label || n.name || n.id,
           source: n.source,
           importance: n.importance,
           type: n.type,
