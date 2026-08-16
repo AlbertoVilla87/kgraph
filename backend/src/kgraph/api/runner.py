@@ -31,17 +31,11 @@ def run_analysis(analysis_id: str):
 
     try:
         from kgraph.ingestion.arxiv import ArxivSource
-        from kgraph.ingestion.parsers.parsers import parse_document
-        from kgraph.discovery.topic_graph import TopicGraph
-        from kgraph.discovery.assembly import DiscoveryAssembly
-        from kgraph.segmentation.chunker import Segmenter
-        from kgraph.segmentation.extractor import SegmentedGraphExtractor
-        from kgraph.graph.config import load_config
+        from kgraph.corpus import CorpusGraphBuilder
 
-        # Step 1: Fetch papers
-        update("fetch", 0.05)
+        # Step 1: Fetch papers from arXiv
+        update("fetch", 0.10)
         time.sleep(0.3)
-        config = load_config(config_path)
         source = ArxivSource(query=topic, max_results=max_papers)
         raw_docs = source.fetch()
         if not raw_docs:
@@ -49,70 +43,31 @@ def run_analysis(analysis_id: str):
             a["error"] = f"No papers found for topic: {topic}"
             return
         a["papers_fetched"] = len(raw_docs)
-        update("fetch", 0.15, "running")
-        time.sleep(0.2)
-
-        # Step 2: Parse documents
-        update("parse", 0.20)
-        time.sleep(0.3)
-        docs = []
-        for doc in raw_docs:
-            parsed = parse_document(doc, config)
-            docs.append(parsed)
-        update("parse", 0.30)
-        time.sleep(0.2)
-
-        # Step 3: Build taxonomy per document
-        update("taxonomy", 0.35)
-        time.sleep(0.3)
-        taxonomies = {}
-        for doc in docs:
-            tg = TopicGraph(config)
-            tg.build(doc)
-            assembly = DiscoveryAssembly(tg.graph)
-            entity_labels, relation_labels = assembly.build()
-            taxonomies[doc.id] = (entity_labels, relation_labels)
-        update("taxonomy", 0.50)
-        time.sleep(0.2)
-
-        # Step 4: Segment
-        update("segment", 0.55)
-        time.sleep(0.3)
-        segmenter = Segmenter(config)
-        all_segments = []
-        for doc in docs:
-            segs = segmenter.segment(doc)
-            all_segments.extend([(doc, s) for s in segs])
-        update("segment", 0.60)
-        time.sleep(0.2)
-
-        # Step 5: Extract
-        update("extract", 0.65)
-        time.sleep(0.3)
-        extractor = SegmentedGraphExtractor(config)
-        per_doc = {}
-        for doc in docs:
-            segs = [s for d, s in all_segments if d.id == doc.id]
-            tax = taxonomies[doc.id]
-            entities, relations = extractor.extract(segs, tax)
-            per_doc[doc.id] = (entities, relations)
-        update("extract", 0.80)
-        time.sleep(0.2)
-
-        # Step 6: Merge
-        update("merge", 0.85)
-        time.sleep(0.3)
-        per_document = [
-            (doc_id, entities, relations)
-            for doc_id, (entities, relations) in per_doc.items()
+        a["papers"] = [
+            {"id": doc.id, "title": doc.metadata.get("title", doc.id)}
+            for doc in raw_docs
         ]
-        from kgraph.corpus.merge import _merge_per_document, summarize_corpus
-        graph = _merge_per_document(per_document)
-        summary = summarize_corpus(graph, [doc.id for doc in docs])
-        update("merge", 0.95)
+        update("fetch", 0.20, "running")
+        time.sleep(0.2)
+
+        # Steps 2-6: Run the full corpus pipeline
+        # The builder handles parsing, taxonomy, segmentation, extraction, merge
+        update("parse", 0.25)
+        time.sleep(0.2)
+        update("taxonomy", 0.30)
+        time.sleep(0.2)
+        update("segment", 0.35)
+
+        builder = CorpusGraphBuilder(config_path, workers=0)
+        update("extract", 0.40)
+
+        graph, summary = builder.build(raw_docs)
+
+        update("merge", 0.90)
         time.sleep(0.2)
 
         # Build result
+        from kgraph.corpus import export_corpus_json
         nodes = []
         for nid, data in graph.nodes(data=True):
             nodes.append({
@@ -121,7 +76,7 @@ def run_analysis(analysis_id: str):
                 "type": data.get("type", "concept"),
                 "importance": round(data.get("score", 0.5) * 10, 1),
                 "source": "shared" if data.get("count", 1) > 1 else "main",
-                "documents": data.get("documents", []),
+                "documents": list(data.get("documents", [])),
             })
 
         edges = []
@@ -132,14 +87,14 @@ def run_analysis(analysis_id: str):
                 "target": v,
                 "relation": data.get("relation", "related to"),
                 "confidence": round(data.get("score", 0.5), 2),
-                "documents": data.get("documents", []),
+                "documents": list(data.get("documents", [])),
             })
 
         update("done", 1.0, "completed")
         a["result"] = {
             "id": analysis_id,
             "topic": topic,
-            "papers": [{"id": doc.id, "title": doc.metadata.get("title", doc.id)} for doc in docs],
+            "papers": a["papers"],
             "topics": nodes,
             "relationships": edges,
             "stats": summary,
