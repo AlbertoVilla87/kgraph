@@ -13,20 +13,20 @@ user before writing.
 
 ## The format
 
-Exactly four sections, plain text (no heading hashes):
+Exactly four sections using `##` headings:
 
 ```
-Summary
+## Summary
 A one or two sentence overview of what the change accomplishes and why.
 
-What Changed
+## What Changed
 A bullet list of concrete changes (files, modules, configs, deps). Be specific:
 name the actual files and symbols, not just areas.
 
-Testing
+## Testing
 A bullet list of how it was verified (commands run, expected output).
 
-Breaking Changes
+## Breaking Changes
 A bullet list of anything that breaks existing usage: renames, moved paths,
 removed keys, changed commands. Use "None" if there are none.
 ```
@@ -34,28 +34,61 @@ removed keys, changed commands. Use "None" if there are none.
 Example (from this repo):
 
 ```
-Summary
+## Summary
 Implemented KeyBERT keyword extraction as a new pipeline stage and exposed it
 through a CLI entry point.
 
-What Changed
-Added a new key_bert_demo.py CLI script that loads documents, extracts
-keyphrases with KeyBERT, and prints the scored keywords.
-Registered a new kbert-demo entry point in backend/pyproject.toml.
-Added keybert and sentence-transformers (via KeyBERT) to the project
-dependencies.
-Extended backend/configs/params.yaml with a new keyword_extractor section.
-Added the ExtractorConfig Pydantic model in kgraph/graph/config.py.
-Renamed ModelConfig to NERConfig and the model config key to ner.
+## What Changed
+- Added a new key_bert_demo.py CLI script that loads documents, extracts
+  keyphrases with KeyBERT, and prints the scored keywords.
+- Registered a new kbert-demo entry point in backend/pyproject.toml.
+- Added keybert and sentence-transformers (via KeyBERT) to the project
+  dependencies.
+- Extended backend/configs/params.yaml with a new keyword_extractor section.
+- Added the ExtractorConfig Pydantic model in kgraph/graph/config.py.
+- Renamed ModelConfig to NERConfig and the model config key to ner.
 
-Testing
-Verified dependency installation with uv sync.
-Verified the new kbert-demo entry point runs and prints extracted keywords.
+## Testing
+- Verified dependency installation with uv sync.
+- Verified the new kbert-demo entry point runs and prints extracted keywords.
 
-Breaking Changes
-The model key in backend/configs/params.yaml has been renamed to ner.
-The ModelConfig class in kgraph.graph.config was renamed to NERConfig.
+## Breaking Changes
+- The model key in backend/configs/params.yaml has been renamed to ner.
+- The ModelConfig class in kgraph.graph.config was renamed to NERConfig.
 ```
+
+## Commit messages with gitmoji
+
+Before pushing or creating the PR, all changes **must be committed**. Use
+[gitmoji](https://gitmoji.dev/) prefixed commit messages to enable automatic
+versioning. Pick the emoji that best matches the change type:
+
+| Emoji | Code | Use for |
+|-------|------|---------|
+| :sparkles: | `:sparkles:` | New feature |
+| :bug: | `:bug:` | Bug fix |
+| :recycle: | `:recycle:` | Refactor (no feature/fix) |
+| :memo: | `:memo:` | Documentation only |
+| :white_check_mark: | `:white_check_mark:` | Adding or updating tests |
+| :lock: | `:lock:` | Security or auth changes |
+| :boom: | `:boom:` | Breaking change |
+| :arrow_up: | `:arrow_up:` | Dependency upgrade |
+| :wrench: | `:wrench:` | Config or tooling changes |
+| :lipstick: | `:lipstick:` | UI / style improvement |
+| :package: | `:package:` | Build / packaging changes |
+| :fire: | `:fire:` | Removing code or files |
+| :sparkles: | `:sparkles:` | Initial commit |
+
+Format: `<emoji> Short imperative description (max 72 chars)`
+
+Example:
+```
+:sparkles: Add KeyBERT keyword extraction CLI demo
+:bug: Fix config loading order in pipeline
+```
+
+For versioning, commits prefixed with :boom: trigger a major bump, :sparkles:
+and :bug: trigger a minor bump, and all others trigger a patch bump.
 
 ## Workflow
 
@@ -65,7 +98,8 @@ The ModelConfig class in kgraph.graph.config was renamed to NERConfig.
    - `git branch --show-current` — current branch name.
    - `git log --oneline <base>..HEAD` — commits in the PR.
    - `git diff --stat <base>...HEAD` — files touched.
-   - `git status --short` — uncommitted work; if present, ask whether to include it.
+   - `git status --short` — uncommitted work; if present, **must commit first**
+     before proceeding (see "Creating the PR on GitHub" step 1).
    - Open the key files in the diff (do not skim the stat only) to understand what
      actually changed and reference real names/paths.
 3. **Determine the intent** from the branch name, commit subjects, and the diff.
@@ -89,9 +123,10 @@ The ModelConfig class in kgraph.graph.config was renamed to NERConfig.
 Only create the PR after the user confirms the description. `gh` (GitHub CLI)
 must be installed and authenticated.
 
-1. If there is uncommitted work (from `git status --short`), ask the user for a
-   commit message, then stage and commit everything:
-   `git add --all && git commit -m "<message>"`.
+1. **Commit first.** If there is uncommitted work (from `git status --short`),
+   stage and commit everything with a proper gitmoji-prefixed message:
+   `git add --all && git commit -m "<emoji> <description>"`.
+   This step is mandatory — never push uncommitted changes.
 2. Ensure the branch is pushed: `git push -u origin <current-branch>`.
 3. Save the description to a temp file and create the PR:
    `gh pr create --base <base> --head <current-branch> --title "<short title>" --body "$(cat <tempfile>)"`.
