@@ -9,6 +9,7 @@ every node and edge records the set of documents that produced it (``docs``).
 """
 
 import json
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -16,6 +17,8 @@ from typing import Dict, List, Tuple
 
 import networkx as nx
 from tqdm import tqdm
+
+log = logging.getLogger(__name__)
 
 from kgraph.discovery.topic_graph import TopicGraph
 from kgraph.extractors.gliner import extract_entities_relations
@@ -105,11 +108,15 @@ class CorpusGraphBuilder:
                         pbar.update(1)
         extraction_secs = time.perf_counter() - t0
 
-        print(
-            f"[corpus] {len(documents)} docs | {n_segments} segments | "
-            f"taxonomy {taxonomy_secs:.1f}s | segmentation {segment_secs:.1f}s | "
-            f"extraction {extraction_secs:.1f}s | "
-            f"segments/doc {n_segments / len(documents):.1f}"
+        log.info(
+            "%d docs | %d segments | taxonomy %.1fs | segmentation %.1fs | "
+            "extraction %.1fs | segments/doc %.1f",
+            len(documents),
+            n_segments,
+            taxonomy_secs,
+            segment_secs,
+            extraction_secs,
+            n_segments / len(documents),
         )
 
         per_document = [

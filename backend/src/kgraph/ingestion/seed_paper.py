@@ -7,6 +7,7 @@ seed came from — it just sees ``RawDocument``s.
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Callable, List
@@ -14,6 +15,8 @@ from typing import Callable, List
 from kgraph.graph.models import RawDocument
 from kgraph.ingestion.base import DataSource, SourceCapabilities
 from kgraph.ingestion.references import ExtractedRef, ReferenceExtractor
+
+log = logging.getLogger(__name__)
 
 _ARXIV_URL_RE = re.compile(
     r"arxiv\.org/(?:abs|pdf|html)/(\d{4}\.\d{4,5}(?:v\d+)?)"
@@ -104,13 +107,15 @@ class SeedPaperSource(DataSource):
         on_progress(1, 1, "Extracting references...")
         ref_ids = self._discover_references(seed_doc)
         total = len(ref_ids)
-        print(
-            f"[seed] Found {total} {self.extractor.reference_format} "
-            f"references (max {self.max_references})"
+        log.info(
+            "Found %d %s references (max %d)",
+            total,
+            self.extractor.reference_format,
+            self.max_references,
         )
 
         ref_docs = self._fetch_references(ref_ids, on_progress)
-        print(f"[seed] Downloaded {len(ref_docs)} referenced papers")
+        log.info("Downloaded %d referenced papers", len(ref_docs))
 
         return [seed_doc] + ref_docs
 
@@ -122,19 +127,21 @@ class SeedPaperSource(DataSource):
 
         docs = self.source.fetch_fulltext(self.download_dir)
         if not docs:
-            print(f"[seed] Seed paper {self.seed_id} not found")
+            log.warning("Seed paper %s not found", self.seed_id)
             return None
         return docs[0]
 
     def _discover_references(self, seed_doc: RawDocument) -> List[str]:
         """Extract resolvable IDs from the seed paper's references."""
         if not seed_doc.content:
-            print("[seed] No content for seed paper, cannot extract references")
+            log.warning("No content for seed paper, cannot extract references")
             return []
 
         extracted = self.extractor.extract(seed_doc.content, max_refs=self.max_references)
         for ref in extracted:
-            print(f"  [ref] {ref.source_id} (from reference #{ref.reference_index + 1})")
+            log.debug(
+                "%s (from reference #%d)", ref.source_id, ref.reference_index + 1
+            )
 
         return [ref.source_id for ref in extracted]
 
@@ -169,11 +176,11 @@ class SeedPaperSource(DataSource):
                 if results:
                     docs.append(results[0])
                     title = results[0].metadata.get("title", rid)
-                    print(f"  [seed] OK: {rid} - {title[:60]}")
+                    log.info("OK: %s - %s", rid, title[:60])
                 else:
-                    print(f"  [seed] Reference {rid} not found, skipping")
+                    log.warning("Reference %s not found, skipping", rid)
             except Exception as e:
-                print(f"  [seed] Error fetching {rid}: {e}")
+                log.error("Error fetching %s: %s", rid, e)
                 continue
 
         on_progress(total, total, f"Downloaded {len(docs)}/{total} papers")

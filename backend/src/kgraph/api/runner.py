@@ -1,10 +1,13 @@
 """Background task that runs the corpus pipeline and updates analysis status."""
 
+import logging
 import time
 import traceback
 from pathlib import Path
 
 from kgraph.api.state import analyses
+
+log = logging.getLogger(__name__)
 
 
 def _advance_steps(a: dict, current_key: str, status: str = "running"):
@@ -29,6 +32,8 @@ def run_analysis(analysis_id: str):
     max_references = a.get("max_references", 15)
     config_path = str(Path(__file__).resolve().parents[3] / "configs" / "params.yaml")
 
+    log.info("Starting analysis %s (seed=%s, topic=%s)", analysis_id, seed_url or "-", topic or "-")
+
     def update(step_key: str, progress: float, detail: str = ""):
         a["current_step"] = step_key
         a["progress"] = progress
@@ -41,10 +46,13 @@ def run_analysis(analysis_id: str):
         else:
             _run_topic_pipeline(a, topic, max_papers, update, config_path)
 
+        log.info("Analysis %s completed successfully", analysis_id)
+
     except Exception as e:
         a["status"] = "error"
         a["error"] = str(e)
         a["traceback"] = traceback.format_exc()
+        log.error("Analysis %s failed: %s", analysis_id, e, exc_info=True)
 
 
 def _run_topic_pipeline(a: dict, topic: str, max_papers: int, update, config_path: str):
