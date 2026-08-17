@@ -1,12 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import cytoscape, { Core, EventObject } from 'cytoscape';
 
 export interface GraphNode {
   id: string;
   label: string;
+  name?: string;
   source: 'main' | 'reference' | 'shared';
   importance: number;
   type: string;
+  documents?: string[];
 }
 
 export interface GraphEdge {
@@ -15,6 +17,7 @@ export interface GraphEdge {
   target: string;
   relation: string;
   confidence: number;
+  documents?: string[];
 }
 
 interface KnowledgeGraphProps {
@@ -25,11 +28,18 @@ interface KnowledgeGraphProps {
   height?: number;
 }
 
-const sourceColors: Record<string, string> = {
-  main: '#8b5cf6',
-  reference: '#3b82f6',
-  shared: '#14b8a6',
-};
+const DOC_COLORS = [
+  '#8b5cf6', // purple
+  '#3b82f6', // blue
+  '#14b8a6', // teal
+  '#f59e0b', // amber
+  '#ef4444', // red
+  '#10b981', // emerald
+  '#f97316', // orange
+  '#6366f1', // indigo
+];
+
+const SHARED_COLOR = '#14b8a6';
 
 export default function KnowledgeGraph({
   nodes,
@@ -40,6 +50,24 @@ export default function KnowledgeGraph({
 }: KnowledgeGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+
+  const docColorMap = useMemo(() => {
+    const allDocIds = new Set<string>();
+    nodes.forEach((n) => n.documents?.forEach((d) => allDocIds.add(d)));
+    const sorted = Array.from(allDocIds).sort();
+    const map: Record<string, string | undefined> = {};
+    sorted.forEach((docId, i) => {
+      map[docId] = DOC_COLORS[i % DOC_COLORS.length];
+    });
+    return map;
+  }, [nodes]);
+
+  const getNodeColor = (node: GraphNode): string => {
+    const docs = node.documents || [];
+    if (docs.length > 1) return SHARED_COLOR;
+    if (docs.length === 1 && docColorMap[docs[0]!]) return docColorMap[docs[0]!]!;
+    return '#94a3b8';
+  };
 
   useEffect(() => {
     if (!containerRef.current || nodes.length === 0) return;
@@ -52,10 +80,11 @@ export default function KnowledgeGraph({
       ...nodes.map((n) => ({
         data: {
           id: n.id,
-          label: n.label,
+          label: n.label || n.name || n.id,
           source: n.source,
           importance: n.importance,
           type: n.type,
+          docColor: getNodeColor(n),
         },
       })),
       ...edges.map((e) => ({
@@ -77,8 +106,7 @@ export default function KnowledgeGraph({
           selector: 'node',
           style: {
             label: 'data(label)',
-            'background-color': (ele: cytoscape.NodeSingular) =>
-              sourceColors[ele.data('source')] || '#94a3b8',
+            'background-color': 'data(docColor)',
             color: '#1e293b',
             'font-size': '11px',
             'font-weight': '500' as cytoscape.Css.FontWeight,
@@ -91,8 +119,7 @@ export default function KnowledgeGraph({
             'text-outline-color': '#fff',
             'text-outline-width': 2,
             'border-width': 2,
-            'border-color': (ele: cytoscape.NodeSingular) =>
-              sourceColors[ele.data('source')] || '#94a3b8',
+            'border-color': 'data(docColor)',
           },
         },
         {
@@ -110,7 +137,7 @@ export default function KnowledgeGraph({
             'text-margin-y': -8,
             'text-outline-color': '#fff',
             'text-outline-width': 1.5,
-          } as cytoscape.Css.Edge,
+          },
         },
         {
           selector: 'node:selected',
@@ -118,7 +145,7 @@ export default function KnowledgeGraph({
             'border-width': 3,
             'border-color': '#f59e0b',
             'background-color': '#f59e0b',
-          } as cytoscape.Css.Node,
+          },
         },
       ],
       layout: {
@@ -160,7 +187,7 @@ export default function KnowledgeGraph({
     return () => {
       cy.destroy();
     };
-  }, [nodes, edges, onNodeClick, onEdgeClick]);
+  }, [nodes, edges, onNodeClick, onEdgeClick, docColorMap]);
 
   return (
     <div

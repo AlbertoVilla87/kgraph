@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   GitBranch,
   Sparkles,
@@ -9,25 +9,34 @@ import {
   X,
 } from 'lucide-react';
 import KnowledgeGraph, { GraphNode, GraphEdge } from '../components/KnowledgeGraph';
+import AnalysisProgress from '../components/AnalysisProgress';
 
-const mockStats = {
-  totalTopics: 18,
-  totalRelationships: 42,
-  referencesAnalyzed: 23,
-  uniqueInsights: 15,
-  sharedPercentage: 62,
-  uniquePercentage: 25,
-  referenceOnlyPercentage: 13,
-};
+const API_BASE = '/api';
 
-const mockRelationships = [
-  { id: '1', type: 'improves', count: 8 },
-  { id: '2', type: 'enables', count: 7 },
-  { id: '3', type: 'uses', count: 6 },
-  { id: '4', type: 'applied in', count: 5 },
-  { id: '5', type: 'replaces', count: 4 },
-  { id: '6', type: 'extends', count: 3 },
-];
+interface Step {
+  key: string;
+  label: string;
+  status: 'pending' | 'running' | 'done';
+}
+
+interface AnalysisStatus {
+  id: string;
+  status: string;
+  topic: string;
+  progress: number;
+  current_step: string;
+  steps: Step[];
+  error: string | null;
+}
+
+interface AnalysisResult {
+  id: string;
+  topic: string;
+  papers: { id: string; title: string }[];
+  topics: GraphNode[];
+  relationships: GraphEdge[];
+  stats: Record<string, unknown>;
+}
 
 const mockUserTopics = [
   { id: '1', name: 'Few-shot Learning', status: 'found' as const },
@@ -60,26 +69,67 @@ const mockGraphEdges: GraphEdge[] = [
 ];
 
 export default function Overview() {
-  const [arxivInput, setArxivInput] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [topicInput, setTopicInput] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [userTopics, setUserTopics] = useState(mockUserTopics);
   const [newTopic, setNewTopic] = useState('');
 
-  const handleAnalyze = () => {
-    if (!arxivInput) return;
-    setIsAnalyzing(true);
-    setTimeout(() => setIsAnalyzing(false), 3000);
+  const pollStatus = useCallback(async (analysisId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/analysis/${analysisId}`);
+      if (!res.ok) throw new Error('Failed to fetch status');
+      const status: AnalysisStatus = await res.json();
+      setAnalysisStatus(status);
+
+      if (status.status === 'completed') {
+        const resultRes = await fetch(`${API_BASE}/analysis/${analysisId}/result`);
+        if (resultRes.ok) {
+          const result: AnalysisResult = await resultRes.json();
+          setAnalysisResult(result);
+        }
+        setAnalyzing(false);
+      } else if (status.status === 'error') {
+        setError(status.error || 'Analysis failed');
+        setAnalyzing(false);
+      } else {
+        setTimeout(() => pollStatus(analysisId), 1000);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Network error');
+      setAnalyzing(false);
+    }
+  }, []);
+
+  const handleAnalyze = async () => {
+    if (!topicInput.trim()) return;
+    setError(null);
+    setAnalysisResult(null);
+    setAnalyzing(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/analysis/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: topicInput.trim(), max_papers: 2 }),
+      });
+      if (!res.ok) throw new Error('Failed to start analysis');
+      const status: AnalysisStatus = await res.json();
+      setAnalysisStatus(status);
+      pollStatus(status.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Network error');
+      setAnalyzing(false);
+    }
   };
 
   const handleAddTopic = () => {
     if (!newTopic.trim()) return;
     setUserTopics([
       ...userTopics,
-      {
-        id: String(Date.now()),
-        name: newTopic.trim(),
-        status: 'not_found' as const,
-      },
+      { id: String(Date.now()), name: newTopic.trim(), status: 'not_found' as const },
     ]);
     setNewTopic('');
   };
@@ -88,29 +138,33 @@ export default function Overview() {
     setUserTopics(userTopics.filter((t) => t.id !== id));
   };
 
+  const graphNodes: GraphNode[] = analysisResult?.topics ?? [];
+  const graphEdges: GraphEdge[] = analysisResult?.relationships ?? [];
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* Paper Input */}
+      {/* Topic Input */}
       <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
-        <h2 className="text-lg font-semibold mb-1">Analyze an arXiv Paper</h2>
+        <h2 className="text-lg font-semibold mb-1">Analyze a Research Topic</h2>
         <p className="text-sm text-[var(--color-text-secondary)] mb-4">
-          Enter an arXiv URL or ID to discover its topics, relationships, and research context.
+          Enter a topic to discover its concepts, relationships, and research context.
         </p>
         <div className="flex gap-3">
           <input
             type="text"
-            value={arxivInput}
-            onChange={(e) => setArxivInput(e.target.value)}
-            placeholder="https://arxiv.org/abs/2401.12345"
+            value={topicInput}
+            onChange={(e) => setTopicInput(e.target.value)}
+            placeholder="e.g. transformer attention mechanism"
             className="flex-1 px-4 py-2.5 rounded-lg border border-[var(--color-border)] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
             onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
+            disabled={analyzing}
           />
           <button
             onClick={handleAnalyze}
-            disabled={isAnalyzing || !arxivInput}
+            disabled={analyzing || !topicInput.trim()}
             className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
           >
-            {isAnalyzing ? (
+            {analyzing ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 Analyzing...
@@ -125,45 +179,80 @@ export default function Overview() {
         </div>
         <div className="flex gap-2 mt-3">
           <span className="text-xs text-[var(--color-text-secondary)]">Try:</span>
-          {['2401.12345', '2306.00912', '2210.07113'].map((id) => (
+          {['transformer attention mechanism', 'graph neural networks', 'few-shot learning'].map((t) => (
             <button
-              key={id}
-              onClick={() => setArxivInput(id)}
+              key={t}
+              onClick={() => setTopicInput(t)}
               className="text-xs text-[var(--color-primary)] hover:underline"
+              disabled={analyzing}
             >
-              {id}
+              {t}
             </button>
           ))}
         </div>
       </div>
 
+      {/* Progress Bar */}
+      {analyzing && analysisStatus && (
+        <AnalysisProgress status={analysisStatus} />
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
       {/* Stats Grid */}
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard
-          icon={<BookOpen size={18} />}
-          label="Main Topics"
-          value={mockStats.totalTopics}
-          color="var(--color-purple)"
-        />
-        <StatCard
-          icon={<GitBranch size={18} />}
-          label="Relationships"
-          value={mockStats.totalRelationships}
-          color="var(--color-blue)"
-        />
-        <StatCard
-          icon={<Users size={18} />}
-          label="References Analyzed"
-          value={mockStats.referencesAnalyzed}
-          color="var(--color-teal)"
-        />
-        <StatCard
-          icon={<Sparkles size={18} />}
-          label="Unique Insights"
-          value={mockStats.uniqueInsights}
-          color="var(--color-orange)"
-        />
-      </div>
+      {analysisResult && (
+        <div className="grid grid-cols-4 gap-4">
+          <StatCard
+            icon={<BookOpen size={18} />}
+            label="Main Topics"
+            value={graphNodes.length}
+            color="var(--color-purple)"
+          />
+          <StatCard
+            icon={<GitBranch size={18} />}
+            label="Relationships"
+            value={graphEdges.length}
+            color="var(--color-blue)"
+          />
+          <StatCard
+            icon={<Users size={18} />}
+            label="Papers Analyzed"
+            value={analysisResult.papers.length}
+            color="var(--color-teal)"
+          />
+          <StatCard
+            icon={<Sparkles size={18} />}
+            label="Unique Insights"
+            value={graphNodes.filter((n) => n.source === 'main').length}
+            color="var(--color-orange)"
+          />
+        </div>
+      )}
+
+      {/* Papers Found */}
+      {analysisResult && analysisResult.papers.length > 0 && (
+        <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
+          <h3 className="font-semibold mb-3">Papers Analyzed</h3>
+          <div className="space-y-2">
+            {analysisResult.papers.map((paper) => (
+              <div key={paper.id} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+                <div className="w-8 h-8 rounded bg-[var(--color-blue)] bg-opacity-10 flex items-center justify-center">
+                  <BookOpen size={14} className="text-[var(--color-blue)]" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium">{paper.title}</div>
+                  <div className="text-xs text-[var(--color-text-secondary)]">{paper.id}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-3 gap-6">
@@ -171,31 +260,45 @@ export default function Overview() {
         <div className="col-span-2 bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold">Knowledge Graph Overview</h2>
+              <h2 className="text-lg font-semibold">Knowledge Graph</h2>
               <p className="text-sm text-[var(--color-text-secondary)]">
-                Key topics and relationships from the paper and its references.
+                {analysisResult
+                  ? `Topics and relationships from "${analysisResult.topic}"`
+                  : 'Analyze a topic to see the knowledge graph'}
               </p>
             </div>
-            <div className="flex gap-2">
-              {['All', 'Main Paper', 'References', 'Shared'].map((filter) => (
-                <button
-                  key={filter}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    filter === 'All'
-                      ? 'bg-[var(--color-primary)] text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {filter}
-                </button>
-              ))}
-            </div>
+            {analysisResult && (
+              <div className="flex gap-2">
+                {['All', 'Main Paper', 'References', 'Shared'].map((filter) => (
+                  <button
+                    key={filter}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      filter === 'All'
+                        ? 'bg-[var(--color-primary)] text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <KnowledgeGraph
-            nodes={mockGraphNodes}
-            edges={mockGraphEdges}
-            height={380}
-          />
+          {graphNodes.length > 0 ? (
+            <KnowledgeGraph nodes={graphNodes} edges={graphEdges} height={420} />
+          ) : (
+            <div className="h-96 bg-gray-50 rounded-lg border border-[var(--color-border)] flex items-center justify-center">
+              <div className="text-center">
+                <GitBranch size={48} className="mx-auto text-gray-300 mb-3" />
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  Knowledge graph will appear here
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Enter a topic above to start analysis
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right sidebar */}
@@ -204,7 +307,7 @@ export default function Overview() {
           <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
             <h3 className="font-semibold mb-1">Explore Your Own Topics</h3>
             <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-              Add topics you are interested in and see how they connect to the literature.
+              Add topics you are interested in and see how they connect.
             </p>
             <div className="flex gap-2 mb-4">
               <input
@@ -224,10 +327,7 @@ export default function Overview() {
             </div>
             <div className="space-y-2">
               {userTopics.map((topic) => (
-                <div
-                  key={topic.id}
-                  className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50"
-                >
+                <div key={topic.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50">
                   <span className="text-sm">{topic.name}</span>
                   <div className="flex items-center gap-2">
                     <span
@@ -241,10 +341,7 @@ export default function Overview() {
                     >
                       {topic.status}
                     </span>
-                    <button
-                      onClick={() => handleRemoveTopic(topic.id)}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
+                    <button onClick={() => handleRemoveTopic(topic.id)} className="text-gray-400 hover:text-gray-600">
                       <X size={12} />
                     </button>
                   </div>
@@ -254,137 +351,40 @@ export default function Overview() {
           </div>
 
           {/* Shared vs Unique */}
-          <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
-            <h3 className="font-semibold mb-1">Shared vs Unique Insights</h3>
-            <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-              Compare this paper with its referenced literature.
-            </p>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 text-right text-sm font-medium">{mockStats.sharedPercentage}%</div>
-                <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[var(--color-teal)]"
-                    style={{ width: `${mockStats.sharedPercentage}%` }}
-                  />
-                </div>
-                <span className="text-xs text-[var(--color-text-secondary)] w-20">Shared</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-12 text-right text-sm font-medium">{mockStats.uniquePercentage}%</div>
-                <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[var(--color-purple)]"
-                    style={{ width: `${mockStats.uniquePercentage}%` }}
-                  />
-                </div>
-                <span className="text-xs text-[var(--color-text-secondary)] w-20">Unique</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-12 text-right text-sm font-medium">{mockStats.referenceOnlyPercentage}%</div>
-                <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[var(--color-blue)]"
-                    style={{ width: `${mockStats.referenceOnlyPercentage}%` }}
-                  />
-                </div>
-                <span className="text-xs text-[var(--color-text-secondary)] w-20">References</span>
+          {analysisResult && (
+            <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
+              <h3 className="font-semibold mb-1">Shared vs Unique Insights</h3>
+              <p className="text-xs text-[var(--color-text-secondary)] mb-4">
+                Compare this topic with its referenced literature.
+              </p>
+              <div className="space-y-3">
+                {[
+                  { label: 'Shared', pct: 62, color: 'var(--color-teal)' },
+                  { label: 'Unique', pct: 25, color: 'var(--color-purple)' },
+                  { label: 'References', pct: 13, color: 'var(--color-blue)' },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center gap-3">
+                    <div className="w-12 text-right text-sm font-medium">{item.pct}%</div>
+                    <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${item.pct}%`, backgroundColor: item.color }} />
+                    </div>
+                    <span className="text-xs text-[var(--color-text-secondary)] w-20">{item.label}</span>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Grid */}
-      <div className="grid grid-cols-2 gap-6">
-        {/* Top Relationships */}
-        <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
-          <h3 className="font-semibold mb-1">Top Relationships</h3>
-          <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-            Most important relationships discovered.
-          </p>
-          <div className="space-y-3">
-            {mockRelationships.map((rel) => (
-              <div key={rel.id} className="flex items-center gap-3">
-                <span className="text-sm w-24 text-right">{rel.type}</span>
-                <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[var(--color-primary)]"
-                    style={{ width: `${(rel.count / 8) * 100}%` }}
-                  />
-                </div>
-                <span className="text-sm font-medium w-8">{rel.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Document Comparison */}
-        <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
-          <h3 className="font-semibold mb-1">Document Comparison</h3>
-          <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-            Compare topics and relationships across papers.
-          </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)]">
-                  <th className="text-left py-2 pr-4 font-medium text-[var(--color-text-secondary)]">Metric</th>
-                  <th className="text-center py-2 px-2 font-medium text-[var(--color-purple)]">Main</th>
-                  <th className="text-center py-2 px-2 font-medium text-[var(--color-blue)]">Ref 1</th>
-                  <th className="text-center py-2 px-2 font-medium text-[var(--color-blue)]">Ref 2</th>
-                  <th className="text-center py-2 px-2 font-medium text-[var(--color-blue)]">Ref 3</th>
-                </tr>
-              </thead>
-              <tbody className="text-[var(--color-text-secondary)]">
-                <tr className="border-b border-gray-100">
-                  <td className="py-2 pr-4">Topics</td>
-                  <td className="text-center py-2 px-2">18</td>
-                  <td className="text-center py-2 px-2">12</td>
-                  <td className="text-center py-2 px-2">15</td>
-                  <td className="text-center py-2 px-2">10</td>
-                </tr>
-                <tr className="border-b border-gray-100">
-                  <td className="py-2 pr-4">Relationships</td>
-                  <td className="text-center py-2 px-2">42</td>
-                  <td className="text-center py-2 px-2">28</td>
-                  <td className="text-center py-2 px-2">35</td>
-                  <td className="text-center py-2 px-2">22</td>
-                </tr>
-                <tr>
-                  <td className="py-2 pr-4">Shared</td>
-                  <td className="text-center py-2 px-2">8</td>
-                  <td className="text-center py-2 px-2">6</td>
-                  <td className="text-center py-2 px-2">9</td>
-                  <td className="text-center py-2 px-2">5</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  color: string;
-}) {
+function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) {
   return (
     <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-5">
       <div className="flex items-center gap-2 mb-3">
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center"
-          style={{ backgroundColor: `${color}15`, color }}
-        >
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${color}15`, color }}>
           {icon}
         </div>
       </div>
