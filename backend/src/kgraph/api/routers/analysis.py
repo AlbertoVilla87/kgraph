@@ -8,8 +8,10 @@ router = APIRouter()
 
 
 class AnalyzeRequest(BaseModel):
-    topic: str
+    topic: str | None = None
     max_papers: int = 2
+    seed_url: str | None = None
+    max_references: int = 15
 
 
 class AnalysisStatus(BaseModel):
@@ -51,9 +53,24 @@ class AnalysisResult(BaseModel):
 
 @router.post("/analyze", response_model=AnalysisStatus)
 def start_analysis(req: AnalyzeRequest):
-    analysis_id = f"analysis_{req.topic.replace(' ', '_').lower()}"
-    steps = [
-        {"key": "fetch", "label": "Fetching papers from arXiv", "status": "pending"},
+    if not req.topic and not req.seed_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Either 'topic' or 'seed_url' must be provided",
+        )
+
+    is_seed = req.seed_url is not None
+    label = req.seed_url if is_seed else req.topic
+    analysis_id = f"analysis_{(label or 'unknown').replace('/', '_').replace(':', '_').replace(' ', '_').lower()}"
+
+    steps = []
+    if is_seed:
+        steps = [
+            {"key": "fetch_seed", "label": "Downloading seed paper", "status": "pending"},
+            {"key": "references", "label": "Extracting references", "status": "pending"},
+            {"key": "fetch_refs", "label": "Downloading referenced papers", "status": "pending"},
+        ]
+    steps += [
         {"key": "parse", "label": "Parsing documents", "status": "pending"},
         {"key": "taxonomy", "label": "Building topic taxonomy", "status": "pending"},
         {"key": "segment", "label": "Segmenting documents", "status": "pending"},
@@ -61,11 +78,14 @@ def start_analysis(req: AnalyzeRequest):
         {"key": "merge", "label": "Merging cross-document graph", "status": "pending"},
         {"key": "done", "label": "Analysis complete", "status": "pending"},
     ]
+
     analyses[analysis_id] = {
         "id": analysis_id,
         "status": "pending",
-        "topic": req.topic,
+        "topic": req.topic or "",
+        "seed_url": req.seed_url,
         "max_papers": req.max_papers,
+        "max_references": req.max_references,
         "progress": 0.0,
         "current_step": "",
         "steps": steps,

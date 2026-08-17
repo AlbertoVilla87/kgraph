@@ -9,6 +9,8 @@ class DataSourceConfig(BaseModel):
     file_type: str = ""
     query: str | None = None
     max_results: int = 100
+    seed_url: str | None = None
+    max_references: int = 15
 
 class NERConfig(BaseModel):
     name: str
