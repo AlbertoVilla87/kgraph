@@ -13,6 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.1.0] - 2026-08-18
+
+### Added
+
+- :sparkles: Seed-paper reference expansion: download a paper, extract its references, analyze them together
+- :sparkles: Quick mode (abstracts-only) for ~30s analysis vs ~5min deep mode
+- :sparkles: SegmentLabelFilter — cosine similarity filtering reduces GLiNER labels from ~40 to 5-10 per segment (~5x inference speedup)
+- :sparkles: Functional graph filter buttons (All / Main Paper / References / Shared)
+- :sparkles: Depth mode toggle in frontend (Quick ~30s / Deep ~5min)
+
+### Changed
+
+- :zap: KeyBERT truncation to 250 words (model max_seq_length is 256 tokens)
+- :zap: arXiv rate limit reduced from 3s to 0.5s
+- :zap: Orphan nodes (no edges) filtered before sending to frontend
+- :zap: EntityMerger integration in quick mode merge for near-duplicate detection
+- :art: Graph visualization redesign — shared nodes get thicker border + glow, orphan nodes dimmed
+- :art: Edge styling — shared edges thicker+colored, unique edges thinner, opacity scales with confidence
+- :lipstick: Granular progress detail for seed paper downloads
+- :construction_worker: Structured logging across core modules (INFO/WARNING/DEBUG)
+- :construction_worker: Root logger configured, uvicorn.access silenced to WARNING
+- :construction_worker: Post-analysis memory cleanup (gc.collect, torch.mps.empty_cache)
+
+### Fixed
+
+- :mute: Silence uvicorn access logs (200 OK polling noise)
+- :bug: _advance_steps("done") now correctly sets status = "completed"
+
 ## [1.0.0] - 2026-08-17
 
 ### Highlights
