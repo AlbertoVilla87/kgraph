@@ -10,7 +10,7 @@ import {
   Link,
   Search,
 } from 'lucide-react';
-import KnowledgeGraph, { GraphNode, GraphEdge } from '../components/KnowledgeGraph';
+import KnowledgeGraph, { GraphNode, GraphEdge, NodeFilter } from '../components/KnowledgeGraph';
 import AnalysisProgress from '../components/AnalysisProgress';
 
 const API_BASE = '/api';
@@ -47,32 +47,9 @@ const mockUserTopics = [
   { id: '3', name: 'Quantum Computing', status: 'not_found' as const },
 ];
 
-const mockGraphNodes: GraphNode[] = [
-  { id: '1', label: 'Transformer Architecture', source: 'shared', importance: 10, type: 'concept' },
-  { id: '2', label: 'Attention Mechanism', source: 'main', importance: 9, type: 'concept' },
-  { id: '3', label: 'Self-Attention', source: 'main', importance: 8, type: 'method' },
-  { id: '4', label: 'Positional Encoding', source: 'main', importance: 7, type: 'technique' },
-  { id: '5', label: 'Sequence Modeling', source: 'shared', importance: 6, type: 'task' },
-  { id: '6', label: 'Neural Machine Translation', source: 'reference', importance: 5, type: 'application' },
-  { id: '7', label: 'RNNs', source: 'reference', importance: 4, type: 'model' },
-  { id: '8', label: 'CNNs', source: 'reference', importance: 3, type: 'model' },
-  { id: '9', label: 'Multi-Head Attention', source: 'main', importance: 7, type: 'method' },
-  { id: '10', label: 'Feed-Forward Network', source: 'shared', importance: 5, type: 'concept' },
-];
-
-const mockGraphEdges: GraphEdge[] = [
-  { id: 'e1', source: '2', target: '1', relation: 'enables', confidence: 0.95 },
-  { id: 'e2', source: '3', target: '2', relation: 'implements', confidence: 0.9 },
-  { id: 'e3', source: '9', target: '2', relation: 'extends', confidence: 0.88 },
-  { id: 'e4', source: '4', target: '1', relation: 'required by', confidence: 0.85 },
-  { id: 'e5', source: '1', target: '5', relation: 'improves', confidence: 0.82 },
-  { id: 'e6', source: '1', target: '6', relation: 'applied in', confidence: 0.78 },
-  { id: 'e7', source: '7', target: '1', relation: 'replaced by', confidence: 0.75 },
-  { id: 'e8', source: '8', target: '1', relation: 'alternative to', confidence: 0.7 },
-];
-
 export default function Overview() {
   const [mode, setMode] = useState<'topic' | 'seed'>('topic');
+  const [depthMode, setDepthMode] = useState<'quick' | 'deep'>('quick');
   const [topicInput, setTopicInput] = useState('');
   const [seedUrl, setSeedUrl] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -81,6 +58,7 @@ export default function Overview() {
   const [error, setError] = useState<string | null>(null);
   const [userTopics, setUserTopics] = useState(mockUserTopics);
   const [newTopic, setNewTopic] = useState('');
+  const [graphFilter, setGraphFilter] = useState<NodeFilter>('all');
 
   const pollStatus = useCallback(async (analysisId: string) => {
     try {
@@ -117,8 +95,8 @@ export default function Overview() {
 
     try {
       const body = mode === 'seed'
-        ? { seed_url: seedUrl.trim(), max_references: 15 }
-        : { topic: topicInput.trim(), max_papers: 2 };
+        ? { seed_url: seedUrl.trim(), max_references: 15, mode: depthMode }
+        : { topic: topicInput.trim(), max_papers: 2, mode: depthMode };
 
       const res = await fetch(`${API_BASE}/analysis/analyze`, {
         method: 'POST',
@@ -189,6 +167,37 @@ export default function Overview() {
             <Link size={14} />
             From a paper
           </button>
+        </div>
+
+        {/* Depth Mode Toggle */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setDepthMode('quick')}
+              disabled={analyzing}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                depthMode === 'quick'
+                  ? 'bg-white text-[var(--color-primary)] shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Quick (~30s)
+            </button>
+            <button
+              onClick={() => setDepthMode('deep')}
+              disabled={analyzing}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                depthMode === 'deep'
+                  ? 'bg-white text-[var(--color-primary)] shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Deep (~5min)
+            </button>
+          </div>
+          <span className="text-xs text-[var(--color-text-secondary)]">
+            {depthMode === 'quick' ? 'Abstracts only — fast overview' : 'Full text + PDF — detailed analysis'}
+          </span>
         </div>
 
         {mode === 'topic' ? (
@@ -350,23 +359,27 @@ export default function Overview() {
             </div>
             {analysisResult && (
               <div className="flex gap-2">
-                {['All', 'Main Paper', 'References', 'Shared'].map((filter) => (
-                  <button
-                    key={filter}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                      filter === 'All'
-                        ? 'bg-[var(--color-primary)] text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {filter}
-                  </button>
-                ))}
+                {(['all', 'main', 'reference', 'shared'] as NodeFilter[]).map((f) => {
+                  const labels: Record<NodeFilter, string> = { all: 'All', main: 'Main Paper', reference: 'References', shared: 'Shared' };
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setGraphFilter(f)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                        graphFilter === f
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {labels[f]}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
           {graphNodes.length > 0 ? (
-            <KnowledgeGraph nodes={graphNodes} edges={graphEdges} height={420} />
+            <KnowledgeGraph nodes={graphNodes} edges={graphEdges} height={420} filter={graphFilter} />
           ) : (
             <div className="h-96 bg-gray-50 rounded-lg border border-[var(--color-border)] flex items-center justify-center">
               <div className="text-center">
@@ -439,17 +452,28 @@ export default function Overview() {
                 Compare this topic with its referenced literature.
               </p>
               <div className="space-y-3">
-                {[
-                  { label: 'Shared', pct: 62, color: 'var(--color-teal)' },
-                  { label: 'Unique', pct: 25, color: 'var(--color-purple)' },
-                  { label: 'References', pct: 13, color: 'var(--color-blue)' },
-                ].map((item) => (
+                {(() => {
+                  const stats = analysisResult.stats as Record<string, unknown>;
+                  const totalNodes = (stats?.total_nodes as number) || graphNodes.length || 1;
+                  const commonNodes = (stats?.common_nodes as number) || graphNodes.filter((n) => (n.documents?.length ?? 0) > 1).length;
+                  const uniqueNodes = totalNodes - commonNodes;
+                  const totalEdges = (stats?.total_edges as number) || graphEdges.length || 1;
+                  const commonEdges = (stats?.common_edges as number) || graphEdges.filter((e) => (e.documents?.length ?? 0) > 1).length;
+                  const sharedPct = Math.round((commonNodes / totalNodes) * 100);
+                  const uniquePct = 100 - sharedPct;
+                  return [
+                    { label: 'Shared nodes', value: commonNodes, pct: sharedPct, color: '#0d9488' },
+                    { label: 'Unique nodes', value: uniqueNodes, pct: uniquePct, color: '#8b5cf6' },
+                    { label: 'Shared edges', value: commonEdges, pct: Math.round((commonEdges / totalEdges) * 100), color: '#3b82f6' },
+                  ];
+                })().map((item) => (
                   <div key={item.label} className="flex items-center gap-3">
                     <div className="w-12 text-right text-sm font-medium">{item.pct}%</div>
                     <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
                       <div className="h-full rounded-full" style={{ width: `${item.pct}%`, backgroundColor: item.color }} />
                     </div>
-                    <span className="text-xs text-[var(--color-text-secondary)] w-20">{item.label}</span>
+                    <span className="text-xs text-[var(--color-text-secondary)] w-24">{item.label}</span>
+                    <span className="text-xs font-mono text-gray-500 w-8 text-right">{item.value}</span>
                   </div>
                 ))}
               </div>
