@@ -11,6 +11,7 @@ site/
 /output/
 backend/output/
 backend/data/arxiv_pdfs
+backend/data/papers
 
 # Virtual environments
 .venv

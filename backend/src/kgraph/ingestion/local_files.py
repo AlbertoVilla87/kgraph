@@ -4,7 +4,7 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from tqdm import tqdm
 
-from kgraph.ingestion.base import DataSource
+from kgraph.ingestion.base import DataSource, SourceCapabilities
 from kgraph.graph.models import RawDocument
 from kgraph.ingestion.parsers.parsers import PARSERS, parse_pdf_document
 
@@ -30,6 +30,16 @@ class LocalFileSource(DataSource):
             raise ValueError(f"Unsupported file_type: {file_type}. Available: {list(PARSERS.keys())}")
 
         self.parser = PARSERS[file_type]
+
+    @property
+    def capabilities(self) -> SourceCapabilities:
+        return SourceCapabilities(
+            can_search=False,
+            can_fetch_fulltext=True,  # files are already local
+            can_download_pdf=False,
+            has_references=False,
+            reference_format="none",
+        )
 
     def fetch(self) -> list[RawDocument]:
         docs = []

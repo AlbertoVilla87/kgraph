@@ -7,7 +7,7 @@ import arxiv
 from arxiv import SortCriterion
 
 from kgraph.graph.models import RawDocument
-from kgraph.ingestion.base import DataSource
+from kgraph.ingestion.base import DataSource, SourceCapabilities
 from kgraph.ingestion.parsers.parsers import parse_pdf_full
 
 _SORT_BY = {
@@ -27,7 +27,7 @@ class ArxivSource(DataSource):
     ``metadata``.
 
     The API only exposes abstracts. For full-text analysis the PDF must be
-    downloaded first: :meth:`download_pdfs` saves them to a local folder so the
+    downloaded first: :meth:`download_pdf` saves them to a local folder so the
     existing local pipeline (docling) can parse them, or :meth:`fetch_fulltext`
     does download + parse in one step and returns ``RawDocument``s with the
     full text as content.
@@ -49,6 +49,16 @@ class ArxivSource(DataSource):
         self.sort_by = _SORT_BY[sort_by]
         self.client = client or arxiv.Client()
 
+    @property
+    def capabilities(self) -> SourceCapabilities:
+        return SourceCapabilities(
+            can_search=True,
+            can_fetch_fulltext=True,
+            can_download_pdf=True,
+            has_references=False,
+            reference_format="arxiv",
+        )
+
     def search(self) -> list[arxiv.Result]:
         """Run the query against the arXiv API and return the raw results."""
         search = arxiv.Search(
@@ -61,23 +71,6 @@ class ArxivSource(DataSource):
     def fetch(self) -> list[RawDocument]:
         """Return one abstract-level document per arXiv result."""
         return [self._to_document(result) for result in self.search()]
-
-    def download_pdfs(
-        self, download_dir: str | Path = "data/arxiv_pdfs"
-    ) -> list[Path]:
-        """Download the PDF of every result into ``download_dir``.
-
-        Skips results without a PDF and files that already exist, so the call is
-        idempotent and safe to re-run. Returns the paths of the saved PDFs.
-        """
-        out_dir = Path(download_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        paths = []
-        for result in self.search():
-            path = self._download_pdf(result, out_dir)
-            if path is not None:
-                paths.append(path)
-        return paths
 
     def fetch_fulltext(
         self, download_dir: str | Path = "data/arxiv_pdfs"
@@ -95,7 +88,7 @@ class ArxivSource(DataSource):
         out_dir.mkdir(parents=True, exist_ok=True)
         parsed = []
         for result in self.search():
-            path = self._download_pdf(result, out_dir)
+            path = self.download_pdf(result, out_dir)
             if path is None:
                 continue
             text_path = path.with_suffix(".md")
@@ -113,21 +106,37 @@ class ArxivSource(DataSource):
                     id=f"arxiv:{result.get_short_id()}",
                     content=text,
                     source="arxiv_fulltext",
-                    metadata=self._metadata(result),
+                    metadata=self.metadata(result),
                     docling_doc=docling_doc,
                 )
             )
         return parsed
 
-    def _download_pdf(self, result: arxiv.Result, out_dir: Path) -> Path | None:
-        if not result.pdf_url:
+    def download_pdf(
+        self, result: arxiv.Result | RawDocument, download_dir: str | Path = "data/arxiv_pdfs"
+    ) -> Path | None:
+        """Download a paper's PDF, skipping if already cached.
+
+        Accepts either an ``arxiv.Result`` (from :meth:`search`) or a
+        ``RawDocument`` with a ``pdf_url`` in metadata.
+        """
+        if isinstance(result, RawDocument):
+            pdf_url = result.metadata.get("pdf_url")
+            short_id = result.metadata.get("arxiv_id", result.id.replace("arxiv:", ""))
+        else:
+            pdf_url = result.pdf_url
+            short_id = result.get_short_id()
+
+        if not pdf_url:
             return None
-        path = out_dir / f"{self._safe_id(result.get_short_id())}.pdf"
+
+        out_dir = Path(download_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        safe_id = short_id.replace("/", "_")
+        path = out_dir / f"{safe_id}.pdf"
         if path.exists():
             return path
-        request = urllib.request.Request(
-            result.pdf_url, headers={"User-Agent": _USER_AGENT}
-        )
+        request = urllib.request.Request(pdf_url, headers={"User-Agent": _USER_AGENT})
         with urllib.request.urlopen(request) as response, open(path, "wb") as f:
             f.write(response.read())
         return path
@@ -138,11 +147,12 @@ class ArxivSource(DataSource):
             id=f"arxiv:{result.get_short_id()}",
             content=result.summary,
             source="arxiv",
-            metadata=ArxivSource._metadata(result),
+            metadata=ArxivSource.metadata(result),
         )
 
     @staticmethod
-    def _metadata(result: arxiv.Result) -> dict:
+    def metadata(result: arxiv.Result) -> dict:
+        """Extract metadata from an arXiv search result."""
         return {
             "arxiv_id": result.get_short_id(),
             "title": result.title,

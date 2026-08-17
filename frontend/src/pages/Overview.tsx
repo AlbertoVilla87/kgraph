@@ -7,6 +7,8 @@ import {
   BookOpen,
   Plus,
   X,
+  Link,
+  Search,
 } from 'lucide-react';
 import KnowledgeGraph, { GraphNode, GraphEdge } from '../components/KnowledgeGraph';
 import AnalysisProgress from '../components/AnalysisProgress';
@@ -69,7 +71,9 @@ const mockGraphEdges: GraphEdge[] = [
 ];
 
 export default function Overview() {
+  const [mode, setMode] = useState<'topic' | 'seed'>('topic');
   const [topicInput, setTopicInput] = useState('');
+  const [seedUrl, setSeedUrl] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
@@ -104,18 +108,26 @@ export default function Overview() {
   }, []);
 
   const handleAnalyze = async () => {
-    if (!topicInput.trim()) return;
+    if (mode === 'topic' && !topicInput.trim()) return;
+    if (mode === 'seed' && !seedUrl.trim()) return;
     setError(null);
     setAnalysisResult(null);
     setAnalyzing(true);
 
     try {
+      const body = mode === 'seed'
+        ? { seed_url: seedUrl.trim(), max_references: 15 }
+        : { topic: topicInput.trim(), max_papers: 2 };
+
       const res = await fetch(`${API_BASE}/analysis/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: topicInput.trim(), max_papers: 2 }),
+        body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error('Failed to start analysis');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Failed to start analysis' }));
+        throw new Error(err.detail || 'Failed to start analysis');
+      }
       const status: AnalysisStatus = await res.json();
       setAnalysisStatus(status);
       pollStatus(status.id);
@@ -147,49 +159,117 @@ export default function Overview() {
       <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
         <h2 className="text-lg font-semibold mb-1">Analyze a Research Topic</h2>
         <p className="text-sm text-[var(--color-text-secondary)] mb-4">
-          Enter a topic to discover its concepts, relationships, and research context.
+          Search by topic or start from a specific paper and discover its references.
         </p>
-        <div className="flex gap-3">
-          <input
-            type="text"
-            value={topicInput}
-            onChange={(e) => setTopicInput(e.target.value)}
-            placeholder="e.g. transformer attention mechanism"
-            className="flex-1 px-4 py-2.5 rounded-lg border border-[var(--color-border)] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
-            onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
-            disabled={analyzing}
-          />
+
+        {/* Mode Toggle */}
+        <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
           <button
-            onClick={handleAnalyze}
-            disabled={analyzing || !topicInput.trim()}
-            className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+            onClick={() => setMode('topic')}
+            disabled={analyzing}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              mode === 'topic'
+                ? 'bg-white text-[var(--color-primary)] shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
           >
-            {analyzing ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Analyzing...
-              </>
-            ) : (
-              <>
-                Analyze
-                <ArrowRight size={14} />
-              </>
-            )}
+            <Search size={14} />
+            Search by topic
+          </button>
+          <button
+            onClick={() => setMode('seed')}
+            disabled={analyzing}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              mode === 'seed'
+                ? 'bg-white text-[var(--color-primary)] shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Link size={14} />
+            From a paper
           </button>
         </div>
-        <div className="flex gap-2 mt-3">
-          <span className="text-xs text-[var(--color-text-secondary)]">Try:</span>
-          {['transformer attention mechanism', 'graph neural networks', 'few-shot learning'].map((t) => (
-            <button
-              key={t}
-              onClick={() => setTopicInput(t)}
-              className="text-xs text-[var(--color-primary)] hover:underline"
-              disabled={analyzing}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+
+        {mode === 'topic' ? (
+          <>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={topicInput}
+                onChange={(e) => setTopicInput(e.target.value)}
+                placeholder="e.g. transformer attention mechanism"
+                className="flex-1 px-4 py-2.5 rounded-lg border border-[var(--color-border)] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
+                disabled={analyzing}
+              />
+              <button
+                onClick={handleAnalyze}
+                disabled={analyzing || !topicInput.trim()}
+                className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+              >
+                {analyzing ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    Analyze
+                    <ArrowRight size={14} />
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <span className="text-xs text-[var(--color-text-secondary)]">Try:</span>
+              {['transformer attention mechanism', 'graph neural networks', 'few-shot learning'].map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTopicInput(t)}
+                  className="text-xs text-[var(--color-primary)] hover:underline"
+                  disabled={analyzing}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={seedUrl}
+                onChange={(e) => setSeedUrl(e.target.value)}
+                placeholder="https://arxiv.org/abs/2301.12345"
+                className="flex-1 px-4 py-2.5 rounded-lg border border-[var(--color-border)] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
+                disabled={analyzing}
+              />
+              <button
+                onClick={handleAnalyze}
+                disabled={analyzing || !seedUrl.trim()}
+                className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+              >
+                {analyzing ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    Expand
+                    <ArrowRight size={14} />
+                  </>
+                )}
+              </button>
+            </div>
+            <p className="text-xs text-[var(--color-text-secondary)] mt-2">
+              Paste an arXiv URL. The system will download this paper, extract its references,
+              and analyze them together to build a citation-based knowledge graph.
+            </p>
+          </>
+        )}
       </div>
 
       {/* Progress Bar */}
