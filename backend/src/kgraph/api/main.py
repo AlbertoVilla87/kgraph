@@ -14,6 +14,8 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
+# Only show uvicorn access logs on errors (4xx/5xx), not every 200 OK poll
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 app = FastAPI(
     title="ArXiv Graph Explorer API",
