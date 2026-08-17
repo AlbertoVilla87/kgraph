@@ -44,6 +44,30 @@ const mockUserTopics = [
   { id: '3', name: 'Quantum Computing', status: 'not_found' as const },
 ];
 
+const mockGraphNodes: GraphNode[] = [
+  { id: '1', label: 'Transformer Architecture', source: 'shared', importance: 10, type: 'concept' },
+  { id: '2', label: 'Attention Mechanism', source: 'main', importance: 9, type: 'concept' },
+  { id: '3', label: 'Self-Attention', source: 'main', importance: 8, type: 'method' },
+  { id: '4', label: 'Positional Encoding', source: 'main', importance: 7, type: 'technique' },
+  { id: '5', label: 'Sequence Modeling', source: 'shared', importance: 6, type: 'task' },
+  { id: '6', label: 'Neural Machine Translation', source: 'reference', importance: 5, type: 'application' },
+  { id: '7', label: 'RNNs', source: 'reference', importance: 4, type: 'model' },
+  { id: '8', label: 'CNNs', source: 'reference', importance: 3, type: 'model' },
+  { id: '9', label: 'Multi-Head Attention', source: 'main', importance: 7, type: 'method' },
+  { id: '10', label: 'Feed-Forward Network', source: 'shared', importance: 5, type: 'concept' },
+];
+
+const mockGraphEdges: GraphEdge[] = [
+  { id: 'e1', source: '2', target: '1', relation: 'enables', confidence: 0.95 },
+  { id: 'e2', source: '3', target: '2', relation: 'implements', confidence: 0.9 },
+  { id: 'e3', source: '9', target: '2', relation: 'extends', confidence: 0.88 },
+  { id: 'e4', source: '4', target: '1', relation: 'required by', confidence: 0.85 },
+  { id: 'e5', source: '1', target: '5', relation: 'improves', confidence: 0.82 },
+  { id: 'e6', source: '1', target: '6', relation: 'applied in', confidence: 0.78 },
+  { id: 'e7', source: '7', target: '1', relation: 'replaced by', confidence: 0.75 },
+  { id: 'e8', source: '8', target: '1', relation: 'alternative to', confidence: 0.7 },
+];
+
 export default function Overview() {
   const [topicInput, setTopicInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);

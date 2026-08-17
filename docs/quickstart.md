@@ -60,7 +60,26 @@ uv run graph-viz output/kg_final.json
 # writes output/kg_final.json.html
 ```
 
-## 4. Next steps
+## 4. Frontend (ArXiv Graph Explorer)
+
+The React frontend visualizes the knowledge graph interactively.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The frontend connects to the FastAPI backend at `localhost:8000`.
+
+To start the backend API:
+
+```bash
+cd backend
+uv run uvicorn kgraph.api.main:app --reload --port 8000
+```
+
+## 5. Next steps
 
 | Goal | Command |
 | --- | --- |

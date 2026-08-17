@@ -2,6 +2,8 @@
 
 > **Astrolabe** — the instrument that mapped the heavens and guided exploration. This tool does the same for the state of the art of any research topic: it maps the field as a knowledge graph, lets you navigate it, and points at what is original and what is missing.
 
+![ArXiv Graph Explorer — frontend skeleton](assets/app_skeleton.png)
+
 A tool to know the **state of the art of any topic** from the research sources that matter (arXiv, IEEE, ...) and to act on it:
 
 - **Map the field** — an accumulated knowledge graph per topic shows the concepts and how they relate, with confidence and frequency.
@@ -50,11 +52,15 @@ kgraph/
 ├── docs/                      # documentation sources (what you are reading)
 ├── backend/                   # Python package, demos, experiments, models, data
 │   ├── src/kgraph/            # the pipeline (ingestion, discovery, extractors, ...)
+│   ├── src/kgraph/api/        # FastAPI REST API for frontend integration
 │   ├── experiments/           # Jupyter notebooks
 │   ├── configs/params.yaml    # pipeline configuration
 │   ├── data/                  # corpus: case_1/, case_2/, arxiv_pdfs/
 │   └── models/                # local models (git-ignored)
-└── frontend/                  # experimental Streamlit app
+└── frontend/                  # React + TypeScript frontend (ArXiv Graph Explorer)
+    └── src/
+        ├── components/        # Layout, KnowledgeGraph (Cytoscape.js)
+        └── pages/             # Overview, Graph Explorer, Shared Insights, ...
 ```
 
 Build and preview the docs locally (docs have their own environment at the repo root, decoupled from `backend/`):
