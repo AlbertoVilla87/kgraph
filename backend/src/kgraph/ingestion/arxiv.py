@@ -47,7 +47,7 @@ class ArxivSource(DataSource):
                 f"Unknown sort_by: {sort_by}. Available: {list(_SORT_BY)}"
             )
         self.sort_by = _SORT_BY[sort_by]
-        self.client = client or arxiv.Client()
+        self.client = client or arxiv.Client(delay_seconds=0.5)
 
     @property
     def capabilities(self) -> SourceCapabilities:

@@ -33,11 +33,18 @@ class AdaptiveKeyBERT:
         return max(max_k, min(self.adaptive.max_candidates, est))
 
     def extract(self, doc: str) -> list[tuple[str, float]]:
-        n_words = len(doc.split())
+        # Truncate to ~250 words (~256 tokens) — the model's max_seq_length.
+        # Anything beyond is silently dropped by SentenceTransformer anyway.
+        words = doc.split()
+        if len(words) > 250:
+            words = words[:250]
+        text = " ".join(words)
+
+        n_words = len(text.split())
         min_k, max_k = self._dynamic_bounds(n_words)
 
         candidates = self.model.extract_keywords(
-            doc,
+            text,
             keyphrase_ngram_range=self.config.n_grams,
             stop_words=self.config.stop_words,
             use_maxsum=True,

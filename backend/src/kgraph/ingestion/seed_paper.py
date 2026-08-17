@@ -7,18 +7,24 @@ seed came from — it just sees ``RawDocument``s.
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
-from typing import List
+from typing import Callable, List
 
 from kgraph.graph.models import RawDocument
 from kgraph.ingestion.base import DataSource, SourceCapabilities
 from kgraph.ingestion.references import ExtractedRef, ReferenceExtractor
 
+log = logging.getLogger(__name__)
+
 _ARXIV_URL_RE = re.compile(
     r"arxiv\.org/(?:abs|pdf|html)/(\d{4}\.\d{4,5}(?:v\d+)?)"
 )
 _ARXIV_ID_RE = re.compile(r"(\d{4}\.\d{4,5}(?:v\d+)?)")
+
+# Type alias for the progress callback: (current, total, detail_message)
+ProgressCallback = Callable[[int, int, str], None]
 
 
 def _parse_arxiv_id(url_or_id: str) -> str:
@@ -33,6 +39,10 @@ def _parse_arxiv_id(url_or_id: str) -> str:
         f"Cannot parse arXiv ID from: {url_or_id!r}. "
         "Expected a URL like https://arxiv.org/abs/2301.12345 or a bare ID."
     )
+
+
+def _noop_progress(current: int, total: int, detail: str) -> None:
+    """Default no-op progress callback."""
 
 
 class SeedPaperSource(DataSource):
@@ -83,57 +93,73 @@ class SeedPaperSource(DataSource):
             reference_format=self.extractor.reference_format,
         )
 
-    def fetch(self) -> List[RawDocument]:
-        """Download seed paper + references and return as RawDocuments."""
+    def fetch(self, on_progress: ProgressCallback = _noop_progress) -> List[RawDocument]:
+        """Download seed paper + references and return as RawDocuments.
+
+        ``on_progress(current, total, detail)`` is called per paper so the
+        caller can update a progress bar with granular status.
+        """
+        on_progress(0, 1, "Downloading seed paper...")
         seed_doc = self._fetch_seed()
         if seed_doc is None:
             return []
 
+        on_progress(1, 1, "Extracting references...")
         ref_ids = self._discover_references(seed_doc)
-        print(
-            f"[seed] Found {len(ref_ids)} {self.extractor.reference_format} "
-            f"references (max {self.max_references})"
+        total = len(ref_ids)
+        log.info(
+            "Found %d %s references (max %d)",
+            total,
+            self.extractor.reference_format,
+            self.max_references,
         )
 
-        ref_docs = self._fetch_references(ref_ids)
-        print(f"[seed] Downloaded {len(ref_docs)} referenced papers")
+        ref_docs = self._fetch_references(ref_ids, on_progress)
+        log.info("Downloaded %d referenced papers", len(ref_docs))
 
         return [seed_doc] + ref_docs
 
     def _fetch_seed(self) -> RawDocument | None:
         """Download and parse the seed paper via the composed source."""
-        # Build a search that returns exactly this paper by ID
         self.source.max_results = 1  # type: ignore[attr-defined]
         if hasattr(self.source, "query"):
             self.source.query = self.seed_id  # type: ignore[attr-defined]
 
         docs = self.source.fetch_fulltext(self.download_dir)
         if not docs:
-            print(f"[seed] Seed paper {self.seed_id} not found")
+            log.warning("Seed paper %s not found", self.seed_id)
             return None
         return docs[0]
 
     def _discover_references(self, seed_doc: RawDocument) -> List[str]:
         """Extract resolvable IDs from the seed paper's references."""
         if not seed_doc.content:
-            print("[seed] No content for seed paper, cannot extract references")
+            log.warning("No content for seed paper, cannot extract references")
             return []
 
         extracted = self.extractor.extract(seed_doc.content, max_refs=self.max_references)
         for ref in extracted:
-            print(f"  [ref] {ref.source_id} (from reference #{ref.reference_index + 1})")
+            log.debug(
+                "%s (from reference #%d)", ref.source_id, ref.reference_index + 1
+            )
 
         return [ref.source_id for ref in extracted]
 
-    def _fetch_references(self, ref_ids: List[str]) -> List[RawDocument]:
+    def _fetch_references(
+        self,
+        ref_ids: List[str],
+        on_progress: ProgressCallback = _noop_progress,
+    ) -> List[RawDocument]:
         """Download and parse referenced papers via the composed source."""
         if not ref_ids:
             return []
 
         docs: List[RawDocument] = []
-        for rid in ref_ids:
+        total = len(ref_ids)
+
+        for i, rid in enumerate(ref_ids, 1):
+            on_progress(i, total, f"Downloading paper {i}/{total}: {rid}")
             try:
-                # Temporarily point the source at this specific ID
                 original_query = getattr(self.source, "query", None)
                 original_max = getattr(self.source, "max_results", None)
                 if hasattr(self.source, "query"):
@@ -150,11 +176,12 @@ class SeedPaperSource(DataSource):
                 if results:
                     docs.append(results[0])
                     title = results[0].metadata.get("title", rid)
-                    print(f"  [seed] OK: {rid} - {title[:60]}")
+                    log.info("OK: %s - %s", rid, title[:60])
                 else:
-                    print(f"  [seed] Reference {rid} not found, skipping")
+                    log.warning("Reference %s not found, skipping", rid)
             except Exception as e:
-                print(f"  [seed] Error fetching {rid}: {e}")
+                log.error("Error fetching %s: %s", rid, e)
                 continue
 
+        on_progress(total, total, f"Downloaded {len(docs)}/{total} papers")
         return docs

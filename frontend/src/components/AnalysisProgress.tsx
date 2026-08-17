@@ -10,6 +10,7 @@ interface AnalysisProgressProps {
   status: {
     progress: number;
     current_step: string;
+    detail: string;
     steps: Step[];
   };
 }
@@ -25,12 +26,19 @@ export default function AnalysisProgress({ status }: AnalysisProgressProps) {
       </div>
 
       {/* Progress bar */}
-      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-6">
+      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-3">
         <div
           className="h-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-purple)] rounded-full transition-all duration-500 ease-out"
           style={{ width: `${pct}%` }}
         />
       </div>
+
+      {/* Detail text */}
+      {status.detail && (
+        <p className="text-xs text-[var(--color-text-secondary)] mb-4 font-mono truncate">
+          {status.detail}
+        </p>
+      )}
 
       {/* Steps */}
       <div className="space-y-3">

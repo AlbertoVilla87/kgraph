@@ -9,6 +9,7 @@ every node and edge records the set of documents that produced it (``docs``).
 """
 
 import json
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -17,12 +18,15 @@ from typing import Dict, List, Tuple
 import networkx as nx
 from tqdm import tqdm
 
+log = logging.getLogger(__name__)
+
 from kgraph.discovery.topic_graph import TopicGraph
 from kgraph.extractors.gliner import extract_entities_relations
 from kgraph.extractors.normalization import canonical
 from kgraph.graph.config import load_pipeline_config
 from kgraph.graph.models import RawDocument
 from kgraph.segmentation.chunker import Segmenter
+from kgraph.segmentation.label_filter import SegmentLabelFilter
 
 from gliner import GLiNER
 
@@ -53,6 +57,9 @@ class CorpusGraphBuilder:
         self.segmenter = Segmenter(
             self.base_config.ner.name, self.base_config.segmentation
         )
+        self.label_filter = SegmentLabelFilter(
+            self.base_config.keyword_extractor.name
+        )
 
     def build(
         self, documents: List[RawDocument]
@@ -65,6 +72,21 @@ class CorpusGraphBuilder:
         for doc in tqdm(documents, desc="taxonomy", unit="doc"):
             taxonomies[doc.id] = self._taxonomy(doc)
         taxonomy_secs = time.perf_counter() - t0
+
+        # Pre-embed labels per document for fast segment filtering
+        t0 = time.perf_counter()
+        filters: Dict[str, SegmentLabelFilter] = {}
+        for doc_id, (ent_labels, rel_labels) in taxonomies.items():
+            self.label_filter.fit(ent_labels, rel_labels)
+            # Snapshot: model is shared, embeddings are per-doc (new array each fit)
+            f = SegmentLabelFilter.__new__(SegmentLabelFilter)
+            f.model = self.label_filter.model
+            f._entity_labels = list(self.label_filter._entity_labels)
+            f._relation_labels = list(self.label_filter._relation_labels)
+            f._entity_embeddings = self.label_filter._entity_embeddings
+            f._relation_embeddings = self.label_filter._relation_embeddings
+            filters[doc_id] = f
+        filter_secs = time.perf_counter() - t0
 
         t0 = time.perf_counter()
         tasks = [
@@ -81,7 +103,7 @@ class CorpusGraphBuilder:
             with tqdm(total=n_segments, desc="extraction", unit="seg") as pbar:
                 for doc, segment in tasks:
                     self._accumulate(
-                        per_doc, doc.id, self._extract(segment, taxonomies[doc.id])
+                        per_doc, doc.id, self._extract(segment, filters[doc.id])
                     )
                     pbar.set_postfix(doc=segment.doc_id, seg=segment.index)
                     pbar.update(1)
@@ -94,7 +116,7 @@ class CorpusGraphBuilder:
             ) as executor:
                 futures = [
                     executor.submit(
-                        self._extract, segment, taxonomies[doc.id]
+                        self._extract, segment, filters[doc.id]
                     )
                     for doc, segment in tasks
                 ]
@@ -105,11 +127,16 @@ class CorpusGraphBuilder:
                         pbar.update(1)
         extraction_secs = time.perf_counter() - t0
 
-        print(
-            f"[corpus] {len(documents)} docs | {n_segments} segments | "
-            f"taxonomy {taxonomy_secs:.1f}s | segmentation {segment_secs:.1f}s | "
-            f"extraction {extraction_secs:.1f}s | "
-            f"segments/doc {n_segments / len(documents):.1f}"
+        log.info(
+            "%d docs | %d segments | taxonomy %.1fs | filter %.1fs | "
+            "segmentation %.1fs | extraction %.1fs | segments/doc %.1f",
+            len(documents),
+            n_segments,
+            taxonomy_secs,
+            filter_secs,
+            segment_secs,
+            extraction_secs,
+            n_segments / len(documents),
         )
 
         per_document = [
@@ -141,8 +168,10 @@ class CorpusGraphBuilder:
             relation_labels.append(_label(data["relation"]))
         return entity_labels, relation_labels
 
-    def _extract(self, segment, taxonomy):
-        entity_labels, relation_labels = taxonomy
+    def _extract(self, segment, label_filter: SegmentLabelFilter):
+        entity_labels, relation_labels = label_filter.filter(
+            segment.text, min_labels=5, max_labels=10
+        )
         return extract_entities_relations(
             self.model,
             segment.text,

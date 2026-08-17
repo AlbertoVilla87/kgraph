@@ -1,3 +1,4 @@
+import logging
 import networkx as nx
 import json
 from typing import List, Dict, Set, Optional
@@ -5,6 +6,8 @@ from kgraph.graph.models import Entity, Relation, RawDocument
 from kgraph.graph.config import PipelineConfig
 from kgraph.extractors.normalization import EntityMerger, canonical
 from gliner import GLiNER
+
+log = logging.getLogger(__name__)
 
 
 def extract_entities_relations(
@@ -112,9 +115,11 @@ class EntityRelationExtractor:
             entities, relations = self.extract_from_document(doc)
             doc_entities.extend(entities)
             all_relations.extend(relations)
-            print(
-                f"Extracted {len(entities)} entities and "
-                f"{len(relations)} relations from {doc.id}"
+            log.info(
+                "Extracted %d entities and %d relations from %s",
+                len(entities),
+                len(relations),
+                doc.id,
             )
 
         return doc_entities, all_relations

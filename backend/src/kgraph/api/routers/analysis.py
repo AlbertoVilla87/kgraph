@@ -12,6 +12,7 @@ class AnalyzeRequest(BaseModel):
     max_papers: int = 2
     seed_url: str | None = None
     max_references: int = 15
+    mode: str = "quick"  # "quick" (abstracts only) or "deep" (full text + PDF)
 
 
 class AnalysisStatus(BaseModel):
@@ -20,6 +21,7 @@ class AnalysisStatus(BaseModel):
     topic: str
     progress: float = 0.0
     current_step: str = ""
+    detail: str = ""
     steps: list[dict] = []
     error: str | None = None
 
@@ -66,14 +68,22 @@ def start_analysis(req: AnalyzeRequest):
     steps = []
     if is_seed:
         steps = [
-            {"key": "fetch_seed", "label": "Downloading seed paper", "status": "pending"},
+            {"key": "fetch_seed", "label": "Downloading seed paper" if req.mode == "deep" else "Fetching seed abstract", "status": "pending"},
             {"key": "references", "label": "Extracting references", "status": "pending"},
-            {"key": "fetch_refs", "label": "Downloading referenced papers", "status": "pending"},
+            {"key": "fetch_refs", "label": "Downloading referenced papers" if req.mode == "deep" else "Fetching referenced abstracts", "status": "pending"},
+        ]
+    if req.mode == "deep":
+        steps += [
+            {"key": "parse", "label": "Parsing documents", "status": "pending"},
         ]
     steps += [
-        {"key": "parse", "label": "Parsing documents", "status": "pending"},
         {"key": "taxonomy", "label": "Building topic taxonomy", "status": "pending"},
-        {"key": "segment", "label": "Segmenting documents", "status": "pending"},
+    ]
+    if req.mode == "deep":
+        steps += [
+            {"key": "segment", "label": "Segmenting documents", "status": "pending"},
+        ]
+    steps += [
         {"key": "extract", "label": "Extracting entities and relationships", "status": "pending"},
         {"key": "merge", "label": "Merging cross-document graph", "status": "pending"},
         {"key": "done", "label": "Analysis complete", "status": "pending"},
@@ -86,8 +96,10 @@ def start_analysis(req: AnalyzeRequest):
         "seed_url": req.seed_url,
         "max_papers": req.max_papers,
         "max_references": req.max_references,
+        "mode": req.mode,
         "progress": 0.0,
         "current_step": "",
+        "detail": "",
         "steps": steps,
         "error": None,
     }
