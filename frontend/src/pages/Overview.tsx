@@ -27,6 +27,7 @@ interface AnalysisStatus {
   topic: string;
   progress: number;
   current_step: string;
+  detail: string;
   steps: Step[];
   error: string | null;
 }

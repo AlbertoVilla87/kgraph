@@ -20,6 +20,7 @@ class AnalysisStatus(BaseModel):
     topic: str
     progress: float = 0.0
     current_step: str = ""
+    detail: str = ""
     steps: list[dict] = []
     error: str | None = None
 
@@ -88,6 +89,7 @@ def start_analysis(req: AnalyzeRequest):
         "max_references": req.max_references,
         "progress": 0.0,
         "current_step": "",
+        "detail": "",
         "steps": steps,
         "error": None,
     }
