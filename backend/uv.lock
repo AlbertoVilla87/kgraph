@@ -1294,6 +1294,30 @@ wheels = [
 ]
 
 [[package]]
+name = "gitdb"
+version = "4.0.12"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "smmap" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/94/63b0fc47eb32792c7ba1fe1b694daec9a63620db1e313033d18140c2320a/gitdb-4.0.12.tar.gz", hash = "sha256:5ef71f855d191a3326fcfbc0d5da835f26b13fbcba60c32c21091c349ffdb571", size = 394684, upload-time = "2025-01-02T07:20:46.413Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/61/5c78b91c3143ed5c14207f463aecfc8f9dbb5092fb2869baf37c273b2705/gitdb-4.0.12-py3-none-any.whl", hash = "sha256:67073e15955400952c6565cc3e707c554a4eea2e428946f7a4c162fab9bd9bcf", size = 62794, upload-time = "2025-01-02T07:20:43.624Z" },
+]
+
+[[package]]
+name = "gitpython"
+version = "3.1.59"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "gitdb" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ca/dc/126b28e76b24a9268ba931ad3e012f71ebdadf62fd9f17758f7074bb0b20/gitpython-3.1.59.tar.gz", hash = "sha256:0a1475cfdc38a5bfba1a3e9a4a9da52a39749ecec322b772915c019f94e5b7e4", size = 230445, upload-time = "2026-08-10T12:03:20.271Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/ed/ae57eb7d344f43f87b74b3a281ead6ec7d6394eef72a7b1dcb28dd089550/gitpython-3.1.59-py3-none-any.whl", hash = "sha256:67a82f537384578643624c8b2c531938a9b82be431663e575dcf638526631d4c", size = 220996, upload-time = "2026-08-10T12:03:18.804Z" },
+]
+
+[[package]]
 name = "gliner"
 version = "0.2.28"
 source = { registry = "https://pypi.org/simple" }
@@ -1308,6 +1332,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f4/b7/0f3e24ff0b8c1c95121532a44e09b5bb87bd771c6bed0d387d51480645c5/gliner-0.2.28.tar.gz", hash = "sha256:b1637afb5cf4235fc871f1e21498831775b7bd19cefbda6dc5fe08ee88cb07a0", size = 263394, upload-time = "2026-07-24T14:03:49.833Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3e/24/cf6a9eb70bd8eb78a74f90104180c38ae0f93bc213fdd3224ea93c2fe74a/gliner-0.2.28-py3-none-any.whl", hash = "sha256:734e333ebf8a48c135aac5c05599f51051037513030127cbaf676ae71ca501c5", size = 245603, upload-time = "2026-07-24T14:03:48.337Z" },
+]
+
+[[package]]
+name = "graphviz"
+version = "0.21"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/b3/3ac91e9be6b761a4b30d66ff165e54439dcd48b83f4e20d644867215f6ca/graphviz-0.21.tar.gz", hash = "sha256:20743e7183be82aaaa8ad6c93f8893c923bd6658a04c32ee115edb3c8a835f78", size = 200434, upload-time = "2025-06-15T09:35:05.824Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/4c/e0ce1ef95d4000ebc1c11801f9b944fa5910ecc15b5e351865763d8657f8/graphviz-0.21-py3-none-any.whl", hash = "sha256:54f33de9f4f911d7e84e4191749cac8cc5653f815b06738c54db9a15ab8b1e42", size = 47300, upload-time = "2025-06-15T09:35:04.433Z" },
 ]
 
 [[package]]
@@ -1425,6 +1458,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/82/db/3582597f8be0d34bd6881365a26d390854f12893eabdd62dd36de9df5a47/huggingface_hub-1.26.0.tar.gz", hash = "sha256:c8cd4e2df1ba9402f77fce9b509ec1d52debb502551789473f34016acc14e361", size = 936665, upload-time = "2026-07-30T14:12:04.156Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/97/bb/63a644c75b545f3ff394b822e9bd1c4a9586489c618b77a4d8a44a33a23b/huggingface_hub-1.26.0-py3-none-any.whl", hash = "sha256:e8cca670caa5d8dfa7e45bf45e86b466698198cd8150c021bcdb4a86b9252364", size = 780357, upload-time = "2026-07-30T14:12:01.998Z" },
+]
+
+[[package]]
+name = "icecream"
+version = "2.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "asttokens" },
+    { name = "colorama" },
+    { name = "executing" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/10/84/6ebc95844feae8a6a29c7fd57e9e3a7ac4817ffab384dc4f0ed53b8e3c46/icecream-2.2.0.tar.gz", hash = "sha256:9d7f244187f00a13f4ac77d176990e187e9c279d6cac4f7548e338291ad97343", size = 14267, upload-time = "2026-04-03T17:42:51.387Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7a/82/9707c7b0336bca53b75f52fc350956a93da66eb6be632b370bc933216fb4/icecream-2.2.0-py3-none-any.whl", hash = "sha256:f8df7343b3e787023eec22f42fbe4722df2f93099d394fd820b91e16b2e6cb56", size = 16707, upload-time = "2026-04-03T17:42:50.001Z" },
 ]
 
 [[package]]
@@ -1951,7 +1999,7 @@ wheels = [
 
 [[package]]
 name = "kgraph"
-version = "0.1.0"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "arxiv" },
@@ -1969,6 +2017,7 @@ dependencies = [
     { name = "networkx" },
     { name = "numpy" },
     { name = "pydantic" },
+    { name = "pytextrank" },
     { name = "pyyaml" },
     { name = "spacy" },
     { name = "streamlit" },
@@ -1993,6 +2042,7 @@ requires-dist = [
     { name = "networkx", specifier = ">=3.6.1" },
     { name = "numpy", specifier = ">=2.5.1" },
     { name = "pydantic", specifier = ">=2.13.4" },
+    { name = "pytextrank", specifier = ">=3.3.0" },
     { name = "pyyaml" },
     { name = "spacy", specifier = ">=3.7" },
     { name = "streamlit", specifier = ">=1.59.2" },
@@ -2696,6 +2746,14 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6a/51/63fe664f3908c97be9d2e4f1158eb633317598cfa6e1fc14af5383f17512/networkx-3.6.1.tar.gz", hash = "sha256:26b7c357accc0c8cde558ad486283728b65b6a95d85ee1cd66bafab4c8168509", size = 2517025, upload-time = "2025-12-08T17:02:39.908Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9e/c9/b2622292ea83fbb4ec318f5b9ab867d0a28ab43c5717bb85b0a5f6b3b0a4/networkx-3.6.1-py3-none-any.whl", hash = "sha256:d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762", size = 2068504, upload-time = "2025-12-08T17:02:38.159Z" },
+]
+
+[package.optional-dependencies]
+default = [
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "scipy" },
 ]
 
 [[package]]
@@ -3688,6 +3746,24 @@ wheels = [
 ]
 
 [[package]]
+name = "pytextrank"
+version = "3.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "gitpython" },
+    { name = "graphviz" },
+    { name = "icecream" },
+    { name = "networkx", extra = ["default"] },
+    { name = "pygments" },
+    { name = "scipy" },
+    { name = "spacy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c7/29/1bbb54e63da7f1c28f1fea8dfb6e677874457aded82034558401d948937e/pytextrank-3.3.0.tar.gz", hash = "sha256:b1bec96442c49984f51283b1f46131ac72908cd0076af790104c1e63b26f155e", size = 659685, upload-time = "2024-02-21T23:17:40.031Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/2b/bc0526279cd182ba6dc2ba92e58c9b4e1db6947475470c57765899c9c1b4/pytextrank-3.3.0-py3-none-any.whl", hash = "sha256:bca2d76ceeb3507dac222c32c74f3cf62df5ec58223d4a48166b3a15a310c2d7", size = 26471, upload-time = "2024-02-21T23:17:37.53Z" },
+]
+
+[[package]]
 name = "python-dateutil"
 version = "2.9.0.post0"
 source = { registry = "https://pypi.org/simple" }
@@ -4469,6 +4545,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/76/53/9c513747547fd595d5c143259129ea8b9c3ea2f6b7bb9dcea2b1966ded3c/smart_open-8.0.1.tar.gz", hash = "sha256:18b1c4496003c6902be17c15f032b5c319f307c89c6ae9e6b028b508bed8b2cf", size = 61882, upload-time = "2026-07-15T13:56:10.492Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c3/96/325b8c507ccecc50421fecc0345a502ee6e4a44785af3c4e6ecbadad624a/smart_open-8.0.1-py3-none-any.whl", hash = "sha256:3e97f90e92a952cb57863dfe132082c400a52eeeb27c067692fb51dbcc5b0089", size = 73504, upload-time = "2026-07-15T13:56:09.033Z" },
+]
+
+[[package]]
+name = "smmap"
+version = "5.0.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1f/ea/49c993d6dfdd7338c9b1000a0f36817ed7ec84577ae2e52f890d1a4ff909/smmap-5.0.3.tar.gz", hash = "sha256:4d9debb8b99007ae47165abc08670bd74cb74b5227dda7f643eccc4e9eb5642c", size = 22506, upload-time = "2026-03-09T03:43:26.1Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/d4/59e74daffcb57a07668852eeeb6035af9f32cbfd7a1d2511f17d2fe6a738/smmap-5.0.3-py3-none-any.whl", hash = "sha256:c106e05d5a61449cf6ba9a1e650227ecfb141590d2a98412103ff35d89fc7b2f", size = 24390, upload-time = "2026-03-09T03:43:24.361Z" },
 ]
 
 [[package]]
