@@ -19,6 +19,7 @@ dependencies = [
     "network>=0.1",
     "networkx>=3.6.1",
     "numpy>=2.5.1",
+    "pytextrank>=3.3.0",
     "pydantic>=2.13.4",
     "pyyaml",
     "spacy>=3.7",
@@ -36,6 +37,7 @@ segmented-demo = "kgraph.cli.segmented_demo:main"
 graph-viz = "kgraph.cli.graph_viz:main"
 arxiv-demo = "kgraph.cli.arxiv_demo:main"
 corpus-demo = "kgraph.cli.corpus_demo:main"
+debug-abstract = "kgraph.cli.debug_abstract:main"
 serve = "kgraph.api.main:app"
 [build-system]
 requires = ["hatchling"]
