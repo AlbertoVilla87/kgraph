@@ -83,13 +83,22 @@ class EntityRelationExtractor:
         self.relation_threshold = config.thresholds.relation
         self.entity_index: Dict[str, Entity] = {}
 
-    def extract_from_document(self, doc: RawDocument) -> tuple[list[dict], list[dict]]:
-        """Extract entities and relations from a single document in one pass."""
+    def extract_from_document(
+        self,
+        doc: RawDocument,
+        entity_labels: Optional[List[str]] = None,
+        relation_labels: Optional[List[str]] = None,
+    ) -> tuple[list[dict], list[dict]]:
+        """Extract entities and relations from a single document in one pass.
+
+        ``entity_labels``/``relation_labels`` override the configured label
+        sets for this call only, enabling per-document extraction lenses.
+        """
         entities, relations = extract_entities_relations(
             self.model,
             doc.content,
-            self.entity_labels,
-            self.relation_labels,
+            entity_labels if entity_labels is not None else self.entity_labels,
+            relation_labels if relation_labels is not None else self.relation_labels,
             self.entity_threshold,
             self.relation_threshold,
             doc_id=doc.id,

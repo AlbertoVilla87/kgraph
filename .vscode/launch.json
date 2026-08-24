@@ -1,0 +1,33 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Topic Discovery Abstract",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "kgraph.cli.debug_abstract",
+            "cwd": "${workspaceFolder}/backend",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--verbose",
+                "--seed-paper", "2404.16130",
+                "--max-references", "1",
+                "--max-seeds", "25",
+                "--max-depth", "2",
+                "--max-relations", "100",
+                "--diversity", "0.7",
+                "--min-k", "2",
+                "--max-k", "10",
+                "--score-floor", "0.2",
+                "--merge-threshold", "0.85",
+                "--max-tokens", "1024",
+                "--overlap-tokens", "64",
+                "--output", "output/debug_graph.json"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/backend/src"
+            }
+        }
+    ]
+}
