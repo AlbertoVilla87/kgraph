@@ -54,3 +54,36 @@ Safi Shamsi --[release (0.99, x4)]--> Graphify
 
 - [Segmentation](segmentation.md) — running the same assembly over token-bounded segments
 - [Data model & configuration](data-model.md) — `Entity` / `Relation` schemas and the full `params.yaml` reference
+- [Citation-guided discovery](discovery.md#citation-guided-discovery-alternative) — an alternative assembly path that uses the seed's citations to define the taxonomy
+
+---
+
+# Citation-guided assembly
+
+`CitationAssembly` (in `kgraph/discovery/citation_assembly.py`) orchestrates the alternative pipeline validated in Experiment 04:
+
+```python
+assembly = CitationAssembly("./configs/params.yaml")
+result = assembly.run(seed_doc, ref_docs, bibliography)
+
+result.graph                    # GLiNERGraph with the final KG
+result.node_classifications     # nid → "core" | "seed-only" | "refs-only"
+result.discovery                # CitationDiscoveryResult for inspection
+```
+
+### Pipeline
+
+1. **CitationDiscovery.build()** — parses bibliography, finds citing contexts, runs Qwen, aggregates taxonomy
+2. **Per-document GLiNER extraction** — each reference uses its own Qwen-derived labels; the seed uses the union of all
+3. **Node classification** — entities are tagged by where they survived (core / seed-only / refs-only)
+4. **Metadata enrichment** — year and entity_type from Qwen are added to each node
+
+### Classification
+
+| Class | Meaning | Example |
+| --- | --- | --- |
+| **core** | In seed + ≥1 references | "query focused summarization" (seed + 4 refs) |
+| **seed-only** | Only in the seed | "GraphRAG" (the paper's own contribution) |
+| **refs-only** | Only in references | "T5" (background model) |
+
+This classification is a cheap originality proxy: if the seed-only class is empty, the paper may be more derivative than it sounds.
