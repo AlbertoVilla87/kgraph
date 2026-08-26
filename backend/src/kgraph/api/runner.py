@@ -242,6 +242,7 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
     from pathlib import Path
 
     import httpx
+    from tqdm import tqdm
 
     from kgraph.graph.models import RawDocument
     from kgraph.ingestion.arxiv import ArxivSource
@@ -316,6 +317,7 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
 
     # 1. Fetch seed paper (full text via ar5iv HTML — needed for bibliography)
     update("fetch_seed", 0.05, f"Fetching seed paper: {seed_url}")
+    log.info("Fetching seed paper: %s", seed_url)
 
     # Extract arxiv ID from URL
     seed_id = seed_url.rstrip("/").split("/")[-1]
@@ -409,15 +411,19 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
     total = len(ref_ids)
 
     completed = 0
+    pbar = tqdm(ref_ids, desc="Fetching refs", unit="ref", leave=False)
     with ThreadPoolExecutor(max_workers=min(8, total)) as pool:
         futures = {pool.submit(_resolve_one_ref, rid): rid for rid in ref_ids}
         for future in as_completed(futures):
             completed += 1
             rid = futures[future]
+            pbar.set_postfix_str(rid)
+            pbar.update(1)
             update("fetch_refs", 0.25 + (completed / total) * 0.25, f"Resolved {completed}/{total}: {rid}")
             doc = future.result()
             if doc:
                 ref_docs.append(doc)
+    pbar.close()
 
     if not ref_docs:
         a["status"] = "error"

@@ -50,6 +50,8 @@ class SegmentedGraphExtractor:
 
     def build(self, documents: List[RawDocument]) -> GLiNERGraph:
         """Segment the documents, extract per segment and concatenate the graph."""
+        from tqdm import tqdm
+
         graph = GLiNERGraph(self.config, model=self.model)
         segments = [
             segment
@@ -59,16 +61,21 @@ class SegmentedGraphExtractor:
         if not segments:
             return graph
 
+        log.info("Processing %d segments across %d documents", len(segments), len(documents))
+
         if len(segments) <= 1 or self.workers <= 1:
-            for segment in segments:
+            for segment in tqdm(segments, desc="GLiNER segments", unit="seg", leave=False):
                 self._merge(graph, self._extract(segment))
             return graph
 
         self._limit_torch_threads()
+        pbar = tqdm(total=len(segments), desc="GLiNER segments", unit="seg", leave=False)
         with ThreadPoolExecutor(max_workers=min(self.workers, len(segments))) as executor:
             futures = [executor.submit(self._extract, segment) for segment in segments]
             for future in as_completed(futures):
                 self._merge(graph, future.result())
+                pbar.update(1)
+        pbar.close()
         return graph
 
     def _extract(
