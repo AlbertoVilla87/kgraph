@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-import urllib.request
+import logging
 from pathlib import Path
 
 import arxiv
+import httpx
 from arxiv import SortCriterion
 
 from kgraph.graph.models import RawDocument
 from kgraph.ingestion.base import DataSource, SourceCapabilities
 from kgraph.ingestion.parsers.parsers import parse_pdf_full
+
+log = logging.getLogger(__name__)
 
 _SORT_BY = {
     "relevance": SortCriterion.Relevance,
@@ -16,7 +19,15 @@ _SORT_BY = {
     "last_updated_date": SortCriterion.LastUpdatedDate,
 }
 
-_USER_AGENT = "kgraph/0.1 (arxiv-retriever; python urllib)"
+_USER_AGENT = "kgraph/0.1 (arxiv-retriever)"
+
+# Shared HTTP client with connection pooling and retry
+_http_client = httpx.Client(
+    headers={"User-Agent": _USER_AGENT},
+    timeout=httpx.Timeout(30.0, read=60.0),
+    follow_redirects=True,
+    limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+)
 
 
 class ArxivSource(DataSource):
@@ -136,10 +147,33 @@ class ArxivSource(DataSource):
         path = out_dir / f"{safe_id}.pdf"
         if path.exists():
             return path
-        request = urllib.request.Request(pdf_url, headers={"User-Agent": _USER_AGENT})
-        with urllib.request.urlopen(request) as response, open(path, "wb") as f:
-            f.write(response.read())
-        return path
+
+        # Download with retry
+        for attempt in range(3):
+            try:
+                with _http_client.stream("GET", pdf_url) as resp:
+                    resp.raise_for_status()
+                    with open(path, "wb") as f:
+                        for chunk in resp.iter_bytes(chunk_size=8192):
+                            f.write(chunk)
+                return path
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    import time
+                    wait = 2 ** attempt
+                    log.warning("Rate limited, waiting %ds (attempt %d/3)", wait, attempt + 1)
+                    time.sleep(wait)
+                    continue
+                log.warning("Failed to download %s: %s", pdf_url, e)
+                return None
+            except httpx.RequestError as e:
+                log.warning("Request error downloading %s: %s", pdf_url, e)
+                if attempt < 2:
+                    import time
+                    time.sleep(1)
+                    continue
+                return None
+        return None
 
     @staticmethod
     def _to_document(result: arxiv.Result) -> RawDocument:
