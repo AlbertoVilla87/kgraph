@@ -50,6 +50,7 @@ const mockUserTopics = [
 export default function Overview() {
   const [mode, setMode] = useState<'topic' | 'seed'>('topic');
   const [depthMode, setDepthMode] = useState<'quick' | 'deep'>('quick');
+  const [discoveryMode, setDiscoveryMode] = useState<'topic' | 'citation'>('topic');
   const [topicInput, setTopicInput] = useState('');
   const [seedUrl, setSeedUrl] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -95,8 +96,8 @@ export default function Overview() {
 
     try {
       const body = mode === 'seed'
-        ? { seed_url: seedUrl.trim(), max_references: 15, mode: depthMode }
-        : { topic: topicInput.trim(), max_papers: 2, mode: depthMode };
+        ? { seed_url: seedUrl.trim(), max_references: 15, mode: depthMode, discovery: discoveryMode }
+        : { topic: topicInput.trim(), max_papers: 2, mode: depthMode, discovery: 'topic' };
 
       const res = await fetch(`${API_BASE}/analysis/analyze`, {
         method: 'POST',
@@ -199,6 +200,41 @@ export default function Overview() {
             {depthMode === 'quick' ? 'Abstracts only — fast overview' : 'Full text + PDF — detailed analysis'}
           </span>
         </div>
+
+        {/* Discovery Mode Toggle (only for seed papers) */}
+        {mode === 'seed' && (
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setDiscoveryMode('topic')}
+                disabled={analyzing}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  discoveryMode === 'topic'
+                    ? 'bg-white text-[var(--color-primary)] shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Topic (KeyBERT)
+              </button>
+              <button
+                onClick={() => setDiscoveryMode('citation')}
+                disabled={analyzing}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  discoveryMode === 'citation'
+                    ? 'bg-white text-[var(--color-primary)] shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Citation (Qwen)
+              </button>
+            </div>
+            <span className="text-xs text-[var(--color-text-secondary)]">
+              {discoveryMode === 'topic'
+                ? 'Unsupervised — KeyBERT + spaCy dependency parsing'
+                : 'Supervised — Qwen reads citing contexts'}
+            </span>
+          </div>
+        )}
 
         {mode === 'topic' ? (
           <>
@@ -359,8 +395,19 @@ export default function Overview() {
             </div>
             {analysisResult && (
               <div className="flex gap-2">
-                {(['all', 'main', 'reference', 'shared'] as NodeFilter[]).map((f) => {
-                  const labels: Record<NodeFilter, string> = { all: 'All', main: 'Main Paper', reference: 'References', shared: 'Shared' };
+                {(discoveryMode === 'citation' && mode === 'seed'
+                  ? (['all', 'core', 'seed-only', 'refs-only'] as NodeFilter[])
+                  : (['all', 'main', 'reference', 'shared'] as NodeFilter[])
+                ).map((f) => {
+                  const labels: Record<NodeFilter, string> = {
+                    all: 'All',
+                    main: 'Main Paper',
+                    reference: 'References',
+                    shared: 'Shared',
+                    core: 'Core',
+                    'seed-only': 'Seed Only',
+                    'refs-only': 'Refs Only',
+                  };
                   return (
                     <button
                       key={f}

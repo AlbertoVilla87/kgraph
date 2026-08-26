@@ -5,7 +5,7 @@ export interface GraphNode {
   id: string;
   label: string;
   name?: string;
-  source: 'main' | 'reference' | 'shared';
+  source: 'main' | 'reference' | 'shared' | 'core' | 'seed-only' | 'refs-only';
   importance: number;
   type: string;
   documents?: string[];
@@ -20,7 +20,7 @@ export interface GraphEdge {
   documents?: string[];
 }
 
-export type NodeFilter = 'all' | 'main' | 'reference' | 'shared';
+export type NodeFilter = 'all' | 'main' | 'reference' | 'shared' | 'core' | 'seed-only' | 'refs-only';
 
 interface KnowledgeGraphProps {
   nodes: GraphNode[];

@@ -12,7 +12,8 @@ class AnalyzeRequest(BaseModel):
     max_papers: int = 2
     seed_url: str | None = None
     max_references: int = 15
-    mode: str = "quick"  # "quick" (abstracts only) or "deep" (full text + PDF)
+    mode: str = "quick"  # "quick" (abstracts) or "deep" (full text + PDF)
+    discovery: str = "topic"  # "topic" (KeyBERT+spaCy) or "citation" (Qwen)
 
 
 class AnalysisStatus(BaseModel):
@@ -68,17 +69,31 @@ def start_analysis(req: AnalyzeRequest):
     steps = []
     if is_seed:
         steps = [
-            {"key": "fetch_seed", "label": "Downloading seed paper" if req.mode == "deep" else "Fetching seed abstract", "status": "pending"},
-            {"key": "references", "label": "Extracting references", "status": "pending"},
+            {"key": "fetch_seed", "label": "Downloading seed paper" if req.mode == "deep" else "Fetching seed paper", "status": "pending"},
+        ]
+        if req.discovery == "citation":
+            steps += [
+                {"key": "bibliography", "label": "Parsing bibliography", "status": "pending"},
+            ]
+        else:
+            steps += [
+                {"key": "references", "label": "Extracting references", "status": "pending"},
+            ]
+        steps += [
             {"key": "fetch_refs", "label": "Downloading referenced papers" if req.mode == "deep" else "Fetching referenced abstracts", "status": "pending"},
+        ]
+    if req.discovery == "citation":
+        steps += [
+            {"key": "ollama", "label": "Extracting concepts with Qwen", "status": "pending"},
         ]
     if req.mode == "deep":
         steps += [
             {"key": "parse", "label": "Parsing documents", "status": "pending"},
         ]
-    steps += [
-        {"key": "taxonomy", "label": "Building topic taxonomy", "status": "pending"},
-    ]
+    if req.discovery == "topic":
+        steps += [
+            {"key": "taxonomy", "label": "Building topic taxonomy", "status": "pending"},
+        ]
     if req.mode == "deep":
         steps += [
             {"key": "segment", "label": "Segmenting documents", "status": "pending"},
@@ -97,6 +112,7 @@ def start_analysis(req: AnalyzeRequest):
         "max_papers": req.max_papers,
         "max_references": req.max_references,
         "mode": req.mode,
+        "discovery": req.discovery,
         "progress": 0.0,
         "current_step": "",
         "detail": "",
