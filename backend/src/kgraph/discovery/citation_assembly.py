@@ -118,13 +118,15 @@ class CitationAssembly:
         # 3. Per-document extraction with per-doc labels
         log.info("Running GLiNER extraction (segmented=%s)...", use_segmentation)
         log.info("GLiNER model path: %s", final_config.ner.name)
+        all_docs = self._all_docs(seed_doc, ref_docs)
         if use_segmentation:
             kg = SegmentedGraphExtractor(final_config).build(
                 self._build_docs_with_labels(seed_doc, ref_docs, result)
             )
         else:
+            from tqdm import tqdm
             kg = GLiNERGraph(final_config)
-            for doc in self._all_docs(seed_doc, ref_docs):
+            for doc in tqdm(all_docs, desc="GLiNER extract", unit="doc", leave=False):
                 e_lab, r_lab = result.per_doc_labels.get(
                     doc.id, (result.entity_labels, result.relation_labels)
                 )
