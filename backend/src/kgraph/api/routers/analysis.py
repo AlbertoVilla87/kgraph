@@ -12,7 +12,7 @@ class AnalyzeRequest(BaseModel):
     max_papers: int = 2
     seed_url: str | None = None
     max_references: int = 15
-    mode: str = "quick"  # "quick" (abstracts only) or "deep" (full text + PDF)
+    mode: str = "quick"  # "quick" (abstracts only), "deep" (full text + PDF), or "citation" (citation-guided discovery)
 
 
 class AnalysisStatus(BaseModel):
@@ -67,27 +67,42 @@ def start_analysis(req: AnalyzeRequest):
 
     steps = []
     if is_seed:
-        steps = [
-            {"key": "fetch_seed", "label": "Downloading seed paper" if req.mode == "deep" else "Fetching seed abstract", "status": "pending"},
-            {"key": "references", "label": "Extracting references", "status": "pending"},
-            {"key": "fetch_refs", "label": "Downloading referenced papers" if req.mode == "deep" else "Fetching referenced abstracts", "status": "pending"},
-        ]
-    if req.mode == "deep":
+        if req.mode == "citation":
+            steps = [
+                {"key": "fetch_seed", "label": "Downloading seed paper", "status": "pending"},
+                {"key": "bibliography", "label": "Parsing bibliography", "status": "pending"},
+                {"key": "fetch_refs", "label": "Resolving referenced papers", "status": "pending"},
+                {"key": "ollama", "label": "Extracting concepts with Qwen", "status": "pending"},
+                {"key": "extract", "label": "Extracting entities and relationships", "status": "pending"},
+                {"key": "classify", "label": "Classifying nodes", "status": "pending"},
+                {"key": "done", "label": "Analysis complete", "status": "pending"},
+            ]
+        else:
+            steps = [
+                {"key": "fetch_seed", "label": "Downloading seed paper" if req.mode == "deep" else "Fetching seed abstract", "status": "pending"},
+                {"key": "references", "label": "Extracting references", "status": "pending"},
+                {"key": "fetch_refs", "label": "Downloading referenced papers" if req.mode == "deep" else "Fetching referenced abstracts", "status": "pending"},
+            ]
+    if req.mode == "citation":
+        pass  # citation steps already defined above
+    elif req.mode == "deep":
         steps += [
             {"key": "parse", "label": "Parsing documents", "status": "pending"},
         ]
-    steps += [
-        {"key": "taxonomy", "label": "Building topic taxonomy", "status": "pending"},
-    ]
+    if req.mode != "citation":
+        steps += [
+            {"key": "taxonomy", "label": "Building topic taxonomy", "status": "pending"},
+        ]
     if req.mode == "deep":
         steps += [
             {"key": "segment", "label": "Segmenting documents", "status": "pending"},
         ]
-    steps += [
-        {"key": "extract", "label": "Extracting entities and relationships", "status": "pending"},
-        {"key": "merge", "label": "Merging cross-document graph", "status": "pending"},
-        {"key": "done", "label": "Analysis complete", "status": "pending"},
-    ]
+    if req.mode != "citation":
+        steps += [
+            {"key": "extract", "label": "Extracting entities and relationships", "status": "pending"},
+            {"key": "merge", "label": "Merging cross-document graph", "status": "pending"},
+            {"key": "done", "label": "Analysis complete", "status": "pending"},
+        ]
 
     analyses[analysis_id] = {
         "id": analysis_id,

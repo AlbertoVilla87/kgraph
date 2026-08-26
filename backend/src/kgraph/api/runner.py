@@ -51,7 +51,10 @@ def run_analysis(analysis_id: str):
 
     try:
         if seed_url:
-            _run_seed_pipeline(a, seed_url, max_references, update, config_path, mode)
+            if mode == "citation":
+                _run_citation_pipeline(a, seed_url, max_references, update, config_path)
+            else:
+                _run_seed_pipeline(a, seed_url, max_references, update, config_path, mode)
         else:
             _run_topic_pipeline(a, topic, max_papers, update, config_path, mode)
 
@@ -220,6 +223,246 @@ def _fetch_abstracts_only(source, seed_id: str, max_references: int, update) -> 
             continue
 
     return [seed_doc] + ref_docs
+
+
+def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, config_path: str):
+    """Citation-guided pipeline: seed citations define the GLiNER taxonomy."""
+    import re
+    import urllib.request
+    from pathlib import Path
+
+    from kgraph.graph.models import RawDocument
+    from kgraph.ingestion.arxiv import ArxivSource
+    from kgraph.ingestion.parsers.parsers import parse_pdf_full
+    from kgraph.discovery.bibliography import parse_bibliography_entries
+    from kgraph.discovery.citation_assembly import CitationAssembly
+    from kgraph.discovery.citation_graph import ensure_ollama, unload_ollama
+
+    SEED_DOC_ID = "__seed__"
+
+    def _split_at_references(text):
+        m = re.search(r"^#{1,3}\s*References\s*$", text, flags=re.M)
+        if not m:
+            return text, ""
+        body = text[:m.start()]
+        section = text[m.end():]
+        nxt = re.search(r"^#{1,3}\s+", section, flags=re.M)
+        return body, (section[:nxt.start()] if nxt else section)
+
+    # 1. Fetch seed paper (full text via PDF)
+    update("fetch_seed", 0.05, f"Fetching seed paper: {seed_url}")
+    time.sleep(0.2)
+
+    # Extract arxiv ID from URL
+    seed_id = seed_url.rstrip("/").split("/")[-1]
+    seed_id = re.sub(r"v\d+$", "", seed_id)  # strip version
+
+    # Search arXiv for the seed
+    source = ArxivSource(query=seed_id, max_results=1)
+    seed_results_raw = source.fetch()
+    if not seed_results_raw:
+        a["status"] = "error"
+        a["error"] = f"Could not find seed paper: {seed_url}"
+        return
+
+    # Download seed PDF for full text
+    import arxiv as arxiv_lib
+    search = arxiv_lib.Search(query=seed_id, max_results=1)
+    client = arxiv_lib.Client()
+    arxiv_results = list(client.results(search))
+    if not arxiv_results:
+        a["status"] = "error"
+        a["error"] = f"Could not find seed paper on arXiv: {seed_id}"
+        return
+
+    arxiv_result = arxiv_results[0]
+    pdf_url = arxiv_result.pdf_url
+    if not pdf_url:
+        a["status"] = "error"
+        a["error"] = "Seed paper has no PDF URL"
+        return
+
+    # Download and parse PDF
+    download_dir = Path("data/papers")
+    download_dir.mkdir(parents=True, exist_ok=True)
+    safe_id = seed_id.replace("/", "_")
+    pdf_path = download_dir / f"{safe_id}.pdf"
+
+    if not pdf_path.exists():
+        req = urllib.request.Request(pdf_url, headers={"User-Agent": "kgraph/0.1"})
+        with urllib.request.urlopen(req) as resp, open(pdf_path, "wb") as f:
+            f.write(resp.read())
+
+    update("fetch_seed", 0.10, "Parsing seed PDF...")
+    try:
+        docling_doc, seed_text = parse_pdf_full(pdf_path)
+    except Exception as e:
+        log.warning("Failed to parse seed PDF: %s", e)
+        a["status"] = "error"
+        a["error"] = f"Failed to parse seed PDF: {e}"
+        return
+
+    seed_body, seed_ref_section = _split_at_references(seed_text)
+    seed_title = seed_results_raw[0].metadata.get("title", seed_id)
+
+    seed_doc = RawDocument(
+        id=SEED_DOC_ID,
+        content=seed_body,
+        source="arxiv_seed",
+        metadata={"title": seed_title},
+        docling_doc=docling_doc,
+    )
+
+    a["papers"] = [{"id": SEED_DOC_ID, "title": seed_title}]
+    update("fetch_seed", 0.15, f"Seed paper: {seed_title}")
+
+    # 2. Parse bibliography
+    update("bibliography", 0.20, "Parsing bibliography...")
+    time.sleep(0.1)
+    bibliography = parse_bibliography_entries(seed_ref_section)
+    log.info("Parsed %d bibliography entries", len(bibliography))
+
+    # Select references by arXiv ID
+    ref_ids = []
+    for entry in bibliography:
+        for aid in entry.arxiv_ids:
+            base = re.sub(r"v\d+$", "", aid)
+            if base not in ref_ids:
+                ref_ids.append(base)
+    ref_ids = ref_ids[:max_references]
+    update("bibliography", 0.25, f"Found {len(bibliography)} entries, resolving {len(ref_ids)}")
+
+    # 3. Resolve references
+    ref_docs = []
+    total = len(ref_ids)
+    for i, rid in enumerate(ref_ids, 1):
+        update("fetch_refs", 0.25 + (i / total) * 0.25, f"Resolving {i}/{total}: {rid}")
+        try:
+            ref_source = ArxivSource(query=rid, max_results=1)
+            ref_fetched = ref_source.fetch()
+            if ref_fetched:
+                ref_body, _ = _split_at_references(ref_fetched[0].content)
+                entry = next(
+                    (e for e in bibliography if any(
+                        re.sub(r"v\d+$", "", a) == rid for a in e.arxiv_ids
+                    )),
+                    None,
+                )
+                ref_docs.append(RawDocument(
+                    id=rid,
+                    content=ref_body,
+                    source="citation_ref",
+                    metadata={
+                        "title": entry.title if entry else rid,
+                        "year": entry.year if entry else None,
+                    },
+                ))
+        except Exception as e:
+            log.warning("Failed to resolve %s: %s", rid, e)
+
+    if not ref_docs:
+        a["status"] = "error"
+        a["error"] = "No references could be resolved"
+        return
+
+    a["papers_fetched"] = 1 + len(ref_docs)
+    a["papers"] = [{"id": SEED_DOC_ID, "title": seed_title}] + [
+        {"id": d.id, "title": d.metadata.get("title", d.id)} for d in ref_docs
+    ]
+    update("fetch_refs", 0.50, f"Resolved {len(ref_docs)} references")
+
+    # 4. Start Ollama and run citation assembly
+    update("ollama", 0.55, "Ensuring Ollama is running...")
+    time.sleep(0.1)
+    try:
+        ensure_ollama()
+    except RuntimeError as e:
+        a["status"] = "error"
+        a["error"] = f"Ollama not available: {e}. Start with: ollama serve"
+        return
+
+    update("extract", 0.60, "Running citation-guided discovery + GLiNER extraction...")
+    assembly = CitationAssembly(config_path)
+    try:
+        result = assembly.run(
+            seed_doc,
+            ref_docs,
+            bibliography=bibliography,
+            segmented=False,
+        )
+    except Exception as e:
+        log.error("CitationAssembly failed: %s", e, exc_info=True)
+        a["status"] = "error"
+        a["error"] = f"Citation assembly failed: {e}"
+        return
+
+    # 5. Convert CitationGraphResult → API format
+    update("classify", 0.90, "Building response...")
+    time.sleep(0.1)
+
+    kg = result.graph
+    classifications = result.node_classifications
+
+    connected_nodes = set()
+    for u, v in kg.graph.edges():
+        connected_nodes.add(u)
+        connected_nodes.add(v)
+
+    nodes = []
+    for nid, data in kg.graph.nodes(data=True):
+        if nid not in connected_nodes:
+            continue
+        node_docs = list({m["doc_id"] for m in data.get("mentions", [])})
+        classification = classifications.get(nid, "unknown")
+        nodes.append({
+            "id": nid,
+            "name": data.get("text", nid),
+            "type": data.get("entity_type", "concept"),
+            "importance": round(data.get("score", 0.5) * 10, 1),
+            "source": classification,
+            "documents": node_docs,
+        })
+
+    edges = []
+    for u, v, key, data in kg.graph.edges(keys=True, data=True):
+        edge_docs = list(data.get("docs", set()))
+        edges.append({
+            "id": f"{u}_{v}_{key}",
+            "source": u,
+            "target": v,
+            "relation": data.get("relation_type", "related to"),
+            "confidence": round(data.get("score", 0.5), 2),
+            "documents": edge_docs,
+        })
+
+    # Summary stats
+    stats = {
+        "total_nodes": kg.graph.number_of_nodes(),
+        "total_edges": kg.graph.number_of_edges(),
+        "core": sum(1 for v in classifications.values() if v == "core"),
+        "seed_only": sum(1 for v in classifications.values() if v == "seed-only"),
+        "refs_only": sum(1 for v in classifications.values() if v == "refs-only"),
+        "entity_labels": len(result.discovery.entity_labels),
+        "relation_labels": len(result.discovery.relation_labels),
+    }
+
+    update("done", 1.0, "Analysis complete")
+    a["result"] = {
+        "id": a["id"],
+        "topic": a.get("topic") or a.get("seed_url") or "",
+        "papers": a["papers"],
+        "topics": nodes,
+        "relationships": edges,
+        "stats": stats,
+    }
+
+    # Cleanup: unload Ollama model
+    try:
+        from kgraph.graph.config import load_pipeline_config
+        cfg = load_pipeline_config(config_path)
+        unload_ollama(cfg.citation.ollama_model)
+    except Exception:
+        pass
 
 
 def _quick_extract(builder, raw_docs: list):
