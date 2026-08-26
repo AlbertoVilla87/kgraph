@@ -39,9 +39,11 @@ def run_analysis(analysis_id: str):
     max_papers = a.get("max_papers", 2)
     max_references = a.get("max_references", 15)
     mode = a.get("mode", "quick")
+    discovery = a.get("discovery", "topic")
     config_path = str(Path(__file__).resolve().parents[3] / "configs" / "params.yaml")
 
-    log.info("Starting analysis %s (seed=%s, topic=%s, mode=%s)", analysis_id, seed_url or "-", topic or "-", mode)
+    log.info("Starting analysis %s (seed=%s, topic=%s, mode=%s, discovery=%s)",
+             analysis_id, seed_url or "-", topic or "-", mode, discovery)
 
     def update(step_key: str, progress: float, detail: str = ""):
         a["current_step"] = step_key
@@ -51,11 +53,15 @@ def run_analysis(analysis_id: str):
 
     try:
         if seed_url:
-            if mode == "citation":
-                _run_citation_pipeline(a, seed_url, max_references, update, config_path)
+            if discovery == "citation":
+                _run_citation_pipeline(a, seed_url, max_references, update, config_path, mode)
             else:
                 _run_seed_pipeline(a, seed_url, max_references, update, config_path, mode)
         else:
+            if discovery == "citation":
+                a["status"] = "error"
+                a["error"] = "Citation discovery requires a seed paper (seed_url), not a topic query"
+                return
             _run_topic_pipeline(a, topic, max_papers, update, config_path, mode)
 
         log.info("Analysis %s completed successfully", analysis_id)
@@ -225,8 +231,12 @@ def _fetch_abstracts_only(source, seed_id: str, max_references: int, update) -> 
     return [seed_doc] + ref_docs
 
 
-def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, config_path: str):
-    """Citation-guided pipeline: seed citations define the GLiNER taxonomy."""
+def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, config_path: str, mode: str = "quick"):
+    """Citation-guided pipeline: seed citations define the GLiNER taxonomy.
+
+    quick: seed gets full text (for bibliography), refs get abstracts only
+    deep: seed + refs get full text, segmentation enabled
+    """
     import re
     import urllib.request
     from pathlib import Path
@@ -249,7 +259,7 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
         nxt = re.search(r"^#{1,3}\s+", section, flags=re.M)
         return body, (section[:nxt.start()] if nxt else section)
 
-    # 1. Fetch seed paper (full text via PDF)
+    # 1. Fetch seed paper (full text via PDF — needed for bibliography)
     update("fetch_seed", 0.05, f"Fetching seed paper: {seed_url}")
     time.sleep(0.2)
 
@@ -332,31 +342,49 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
     ref_ids = ref_ids[:max_references]
     update("bibliography", 0.25, f"Found {len(bibliography)} entries, resolving {len(ref_ids)}")
 
-    # 3. Resolve references
+    # 3. Resolve references (quick: abstracts only; deep: full text)
     ref_docs = []
     total = len(ref_ids)
     for i, rid in enumerate(ref_ids, 1):
         update("fetch_refs", 0.25 + (i / total) * 0.25, f"Resolving {i}/{total}: {rid}")
         try:
             ref_source = ArxivSource(query=rid, max_results=1)
-            ref_fetched = ref_source.fetch()
-            if ref_fetched:
-                ref_body, _ = _split_at_references(ref_fetched[0].content)
-                entry = next(
-                    (e for e in bibliography if any(
-                        re.sub(r"v\d+$", "", a) == rid for a in e.arxiv_ids
-                    )),
-                    None,
-                )
-                ref_docs.append(RawDocument(
-                    id=rid,
-                    content=ref_body,
-                    source="citation_ref",
-                    metadata={
-                        "title": entry.title if entry else rid,
-                        "year": entry.year if entry else None,
-                    },
-                ))
+            if mode == "deep":
+                # Download PDF for full text
+                ref_arxiv = list(arxiv_lib.Client().results(arxiv_lib.Search(query=rid, max_results=1)))
+                if ref_arxiv and ref_arxiv[0].pdf_url:
+                    ref_pdf_dir = download_dir
+                    ref_safe_id = rid.replace("/", "_")
+                    ref_pdf_path = ref_pdf_dir / f"{ref_safe_id}.pdf"
+                    if not ref_pdf_path.exists():
+                        req = urllib.request.Request(ref_arxiv[0].pdf_url, headers={"User-Agent": "kgraph/0.1"})
+                        with urllib.request.urlopen(req) as resp, open(ref_pdf_path, "wb") as f:
+                            f.write(resp.read())
+                    _, ref_text = parse_pdf_full(ref_pdf_path)
+                    ref_body, _ = _split_at_references(ref_text)
+                else:
+                    ref_fetched = ref_source.fetch()
+                    ref_body = ref_fetched[0].content if ref_fetched else ""
+            else:
+                # Quick: abstracts only
+                ref_fetched = ref_source.fetch()
+                ref_body = ref_fetched[0].content if ref_fetched else ""
+
+            entry = next(
+                (e for e in bibliography if any(
+                    re.sub(r"v\d+$", "", a) == rid for a in e.arxiv_ids
+                )),
+                None,
+            )
+            ref_docs.append(RawDocument(
+                id=rid,
+                content=ref_body,
+                source="citation_ref",
+                metadata={
+                    "title": entry.title if entry else rid,
+                    "year": entry.year if entry else None,
+                },
+            ))
         except Exception as e:
             log.warning("Failed to resolve %s: %s", rid, e)
 
@@ -381,6 +409,7 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
         a["error"] = f"Ollama not available: {e}. Start with: ollama serve"
         return
 
+    segmented = mode == "deep"
     update("extract", 0.60, "Running citation-guided discovery + GLiNER extraction...")
     assembly = CitationAssembly(config_path)
     try:
@@ -388,7 +417,7 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
             seed_doc,
             ref_docs,
             bibliography=bibliography,
-            segmented=False,
+            segmented=segmented,
         )
     except Exception as e:
         log.error("CitationAssembly failed: %s", e, exc_info=True)
@@ -397,7 +426,7 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
         return
 
     # 5. Convert CitationGraphResult → API format
-    update("classify", 0.90, "Building response...")
+    update("merge", 0.90, "Building response...")
     time.sleep(0.1)
 
     kg = result.graph
