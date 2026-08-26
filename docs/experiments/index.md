@@ -8,7 +8,7 @@ Exploratory work lives in `backend/experiments/` as Jupyter notebooks. They are 
 | --- | --- | --- | --- |
 | 01 — Explore docling | `exp_01_explore_docling.ipynb` | How does docling parse PDFs (layout, tables, markdown export)? | Setup stub; docling became the ingestion/parsing layer |
 | 02 — Qwen vs KeyBERT | `exp_02_qwen_versus_keybert.ipynb` | Which seed route feeds GLiNER better — document-local keywords or abstract LLM concepts? | KeyBERT stays grounded; Qwen abstracts further but the comparison is not yet conclusive. Led to adaptive KeyBERT + deterministic discovery. → [notebook](exp_02_qwen_versus_keybert.ipynb) |
-| 04 — Seed citation graph | `exp_04_seed_citation_graph.ipynb` | Can the seed's own citations define the GLiNER taxonomy? Qwen reads each citing context → `{concepts, relations}` → zero-shot labels over every reference full text → graph split into core / seed-only / refs-only. | In progress; Ollama calls use `keep_alive` so Qwen unloads itself between stages → [notebook](exp_04_seed_citation_graph.ipynb) |
+| 04 — Seed citation graph | `exp_04_seed_citation_graph.ipynb` | Can the seed's own citations define the GLiNER taxonomy? Qwen reads each citing context → `{concepts, relations}` → zero-shot labels over every reference full text → graph split into core / seed-only / refs-only. | **Implemented** as citation-guided discovery in the pipeline. See [Citation-guided discovery](../architecture/discovery.md#citation-guided-discovery-alternative). → [notebook](exp_04_seed_citation_graph.ipynb) |
 
 ## Other routes in the repo
 

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- :sparkles: Citation-guided discovery: seed paper's citations define the GLiNER taxonomy (exp_04)
+- :sparkles: Entity classification: core / seed-only / refs-only originality proxy
+- :sparkles: Per-document GLiNER labels via citation context analysis
+- :sparkles: Bibliography parser with arXiv/DOI extraction and author–year matching
+- :sparkles: Configurable stopwords utility (spaCy-first, graceful fallback)
+- :sparkles: `citation-demo` CLI entry point
+
 ### Changed
 
 ### Fixed

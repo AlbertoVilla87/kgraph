@@ -174,3 +174,109 @@ CoT RL         --extend--> this idea
 ## Continue reading
 
 The discovered taxonomy is handed to GLiNER in [Assembly](assembly.md).
+
+---
+
+# Citation-guided discovery (alternative)
+
+While the topic-guided approach discovers the taxonomy from the document itself, citation-guided discovery uses **the seed paper's own citations** to define what concepts matter in the state of the art. This is the approach validated in [Experiment 04](../experiments/index.md).
+
+**The key idea: the seed's citations define the lens — Qwen reads each citing context to produce concepts/relations, which become the GLiNER taxonomy.**
+
+## When to use which
+
+| | Topic-guided | Citation-guided |
+| --- | --- | --- |
+| **Input** | Single document | Seed + its references |
+| **Taxonomy source** | KeyBERT seeds + spaCy deps | Qwen reading citing contexts |
+| **Needs LLM** | No (deterministic) | Yes (Ollama/Qwen) |
+| **Classification** | No | core / seed-only / refs-only |
+| **Entity types** | From spaCy/GiNER labels | From Qwen semantic types |
+| **Best for** | Exploring one paper | Mapping seed vs. state of the art |
+
+## How it works
+
+```mermaid
+flowchart TD
+    A[Seed paper] --> B[Parse bibliography]
+    B --> C[Find citing contexts<br/>author-year matching]
+    C --> D[Qwen extracts<br/>concepts + types + relations]
+    D --> E[Aggregate taxonomy<br/>count across references]
+    E --> F[Per-doc labels<br/>each ref gets its own lens]
+    F --> G[GLiNER extraction<br/>with per-doc labels]
+    G --> H[Classify nodes<br/>core / seed-only / refs-only]
+    H --> I[Knowledge graph]
+```
+
+### Step 1 — Parse bibliography
+
+`parse_bibliography_entries()` (in `kgraph/discovery/bibliography.py`) parses the seed's References section into structured entries with arXiv IDs, author surnames, and publication years. Supports both bullet-style (docling) and numbered formats.
+
+### Step 2 — Find citing contexts
+
+For each resolved reference, the engine finds sentences in the seed body that cite it using author–year matching (e.g., "Baumel et al., 2018"). These citing contexts represent *what the seed highlights about that reference*.
+
+### Step 3 — Qwen extraction
+
+Each citing context is sent to Qwen (via Ollama/LiteLLM) with a structured JSON schema:
+
+```python
+class RefInsights(BaseModel):
+    concepts: list[str]   # ["query focused summarization", "graph-based"]
+    types: list[str]      # ["summarization", "graph structure"]
+    relations: list[str]  # ["extends", "outperforms"]
+```
+
+The `types` field captures the semantic type of each concept — this information is preserved in the final graph.
+
+### Step 4 — Aggregate taxonomy
+
+Concepts and relations are counted across references. **A label suggested by more references is more central to the state of the art.** The top-K of each become GLiNER's zero-shot labels. Stop words are filtered using the configurable `get_stopwords()` utility.
+
+### Step 5 — Per-document labels
+
+Each reference gets its own GLiNER labels based on what the seed says about it. The seed gets the union of all labels. This produces a sharper extraction than a single global taxonomy.
+
+### Step 6 — Classification
+
+Every extracted entity is classified by where it survived:
+
+| Class | Meaning |
+| --- | --- |
+| **core** | In the seed AND at least 2 references — shared state of the art |
+| **seed-only** | Claimed/used by the seed alone — its novelty surface |
+| **refs-only** | Background concepts the seed doesn't lean on |
+
+## Configuration
+
+Under `citation` in `backend/configs/params.yaml`:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `ollama_model` | `ollama/qwen3:0.6b` | Ollama model for concept extraction |
+| `ollama_api_base` | `http://localhost:11434` | Ollama API endpoint |
+| `keep_alive` | `1m` | How long to keep the model loaded after last request |
+| `max_refs` | 15 | Maximum references to resolve and analyze |
+| `top_concepts` | 15 | Number of entity labels in the taxonomy |
+| `top_relations` | 8 | Number of relation labels in the taxonomy |
+| `max_chars` | 24000 | Full-text truncation per document |
+| `stopwords_source` | `spacy` | Stop word source: `"spacy"` or `"config"` |
+| `stopwords` | `[]` | Extra stop words (used when `stopwords_source="config"`) |
+
+## CLI
+
+```bash
+uv run citation-demo --seed 2404.16130
+uv run citation-demo --seed 2404.16130 --output output/citation_kg.json
+uv run citation-demo --seed 2404.16130 --max-refs 10 --no-segmentation
+```
+
+## Module map
+
+| Module | Role |
+| --- | --- |
+| `kgraph/discovery/bibliography.py` | Parse bibliography, extract arXiv/DOI IDs, author–year |
+| `kgraph/discovery/citation_graph.py` | Core discovery engine (Qwen + aggregation) |
+| `kgraph/discovery/citation_assembly.py` | Orchestrator: discovery → GLiNER → classification |
+| `kgraph/utils/stopwords.py` | Configurable stop word loader (spaCy-first) |
+| `kgraph/cli/citation_demo.py` | CLI entry point |
