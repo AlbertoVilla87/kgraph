@@ -117,10 +117,14 @@ def _resolve_model_paths(raw: dict, config_dir: Path) -> dict:
 
 
 def load_pipeline_config(path: str) -> PipelineConfig:
+    import logging
+    log = logging.getLogger(__name__)
     config_dir = Path(path).parent
     with open(path) as f:
         raw = yaml.safe_load(f)
     raw = _resolve_model_paths(raw, config_dir)
+    log.info("Loaded config from %s", path)
+    log.info("  ner.name resolved to: %s", raw.get("ner", {}).get("name"))
     return PipelineConfig(**raw)
 
 def build_pipeline_config(

@@ -116,7 +116,8 @@ class CitationAssembly:
         )
 
         # 3. Per-document extraction with per-doc labels
-        log.info("Running GLiNER extraction...")
+        log.info("Running GLiNER extraction (segmented=%s)...", use_segmentation)
+        log.info("GLiNER model path: %s", final_config.ner.name)
         if use_segmentation:
             kg = SegmentedGraphExtractor(final_config).build(
                 self._build_docs_with_labels(seed_doc, ref_docs, result)
