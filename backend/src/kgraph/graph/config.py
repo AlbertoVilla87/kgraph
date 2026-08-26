@@ -60,6 +60,18 @@ class SegmentationConfig(BaseModel):
     overlap_tokens: int = 64
     workers: int = 0
 
+class CitationDiscoveryConfig(BaseModel):
+    """Configuration for citation-guided discovery (exp_04 approach)."""
+    ollama_model: str = "ollama/qwen3:0.6b"
+    ollama_api_base: str = "http://localhost:11434"
+    keep_alive: str = "1m"
+    max_refs: int = 15
+    top_concepts: int = 15
+    top_relations: int = 8
+    max_chars: int = 24_000
+    stopwords_source: str = "spacy"
+    stopwords: list[str] = []
+
 class PipelineConfig(BaseModel):
     data_source: DataSourceConfig
     entities: list[str] = []
@@ -71,6 +83,7 @@ class PipelineConfig(BaseModel):
     discovery: DiscoveryConfig = DiscoveryConfig()
     entity_merging: EntityMergingConfig = EntityMergingConfig()
     segmentation: SegmentationConfig = SegmentationConfig()
+    citation: CitationDiscoveryConfig = CitationDiscoveryConfig()
 
 def load_pipeline_config(path: str) -> PipelineConfig:
     with open(path) as f:

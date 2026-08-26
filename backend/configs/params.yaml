@@ -74,6 +74,17 @@ segmentation:
   overlap_tokens: 64
   workers: 0
 
+citation:
+  ollama_model: "ollama/qwen3:0.6b"
+  ollama_api_base: "http://localhost:11434"
+  keep_alive: "1m"
+  max_refs: 15
+  top_concepts: 15
+  top_relations: 8
+  max_chars: 24000
+  stopwords_source: "spacy"
+  stopwords: []
+
 data_source:
   type: "local_files"
   folder: "data/arxiv_pdfs"
