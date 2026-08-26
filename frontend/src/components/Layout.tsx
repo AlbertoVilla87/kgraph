@@ -19,7 +19,6 @@ const navItems = [
   { to: '/shared', icon: Layers, label: 'Shared Insights' },
   { to: '/originality', icon: Sparkles, label: 'Originality' },
   { to: '/gaps', icon: Search, label: 'Research Gaps' },
-  { to: '/topics', icon: Search, label: 'Topic Search' },
   { to: '/saved', icon: Bookmark, label: 'Saved Analyses' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
