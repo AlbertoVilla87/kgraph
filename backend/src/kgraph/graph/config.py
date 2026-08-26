@@ -85,9 +85,42 @@ class PipelineConfig(BaseModel):
     segmentation: SegmentationConfig = SegmentationConfig()
     citation: CitationDiscoveryConfig = CitationDiscoveryConfig()
 
+def _resolve_model_paths(raw: dict, config_dir: Path) -> dict:
+    """Resolve relative model paths relative to the config file's parent directory.
+
+    Models live in ``backend/models/`` while the config lives in
+    ``backend/configs/``, so we try the config dir first, then its parent.
+    """
+
+    def _resolve(v: str) -> str:
+        if not isinstance(v, str):
+            return v
+        if v.startswith("http://") or v.startswith("https://"):
+            return v
+        # Try config dir first, then its parent (backend/)
+        for base in (config_dir, config_dir.parent):
+            candidate = (base / v).resolve()
+            if candidate.exists():
+                return str(candidate)
+        return v
+
+    if "ner" in raw and "name" in raw["ner"]:
+        raw["ner"]["name"] = _resolve(raw["ner"]["name"])
+    if "keyword_extractor" in raw and "name" in raw["keyword_extractor"]:
+        raw["keyword_extractor"]["name"] = _resolve(raw["keyword_extractor"]["name"])
+    if "entity_merging" in raw and "model" in raw["entity_merging"]:
+        raw["entity_merging"]["model"] = _resolve(raw["entity_merging"]["model"])
+    if "discovery" in raw and "spacy_model" in raw["discovery"]:
+        raw["discovery"]["spacy_model"] = _resolve(raw["discovery"]["spacy_model"])
+
+    return raw
+
+
 def load_pipeline_config(path: str) -> PipelineConfig:
+    config_dir = Path(path).parent
     with open(path) as f:
         raw = yaml.safe_load(f)
+    raw = _resolve_model_paths(raw, config_dir)
     return PipelineConfig(**raw)
 
 def build_pipeline_config(

@@ -238,36 +238,90 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
     deep: seed + refs get full text, segmentation enabled
     """
     import re
-    import urllib.request
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from pathlib import Path
+
+    import httpx
 
     from kgraph.graph.models import RawDocument
     from kgraph.ingestion.arxiv import ArxivSource
-    from kgraph.ingestion.parsers.parsers import parse_pdf_full
     from kgraph.discovery.bibliography import parse_bibliography_entries
     from kgraph.discovery.citation_assembly import CitationAssembly
     from kgraph.discovery.citation_graph import ensure_ollama, unload_ollama
 
     SEED_DOC_ID = "__seed__"
 
-    def _split_at_references(text):
-        m = re.search(r"^#{1,3}\s*References\s*$", text, flags=re.M)
-        if not m:
-            return text, ""
-        body = text[:m.start()]
-        section = text[m.end():]
-        nxt = re.search(r"^#{1,3}\s+", section, flags=re.M)
-        return body, (section[:nxt.start()] if nxt else section)
+    # Fast HTTP client for downloads
+    _http = httpx.Client(
+        headers={"User-Agent": "kgraph/0.1"},
+        timeout=httpx.Timeout(30.0, read=60.0),
+        follow_redirects=True,
+        limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+    )
 
-    # 1. Fetch seed paper (full text via PDF — needed for bibliography)
+    def _fetch_arxiv_html(arxiv_id: str) -> tuple[str, str]:
+        """Fetch paper from ar5iv HTML. Returns (body_text, references_text).
+
+        Uses the semantic HTML structure instead of regex on plain text.
+        """
+        from bs4 import BeautifulSoup
+
+        url = f"https://ar5iv.labs.arxiv.org/html/{arxiv_id}"
+        for attempt in range(3):
+            try:
+                resp = _http.get(url)
+                resp.raise_for_status()
+                soup = BeautifulSoup(resp.text, "html.parser")
+
+                # Extract body text (everything before the bibliography section)
+                bib_section = soup.find("section", id="bib")
+                body_text = ""
+                if bib_section:
+                    # Get all sections before bibliography
+                    for el in bib_section.previous_siblings:
+                        if hasattr(el, "get_text"):
+                            body_text = el.get_text(separator="\n", strip=True) + "\n" + body_text
+                else:
+                    # Fallback: use article or body
+                    article = soup.find("article") or soup.find("body") or soup
+                    body_text = article.get_text(separator="\n", strip=True)
+
+                # Extract references as structured text from <li> items
+                refs_text = ""
+                if bib_section:
+                    bib_list = bib_section.find("ul", class_="ltx_biblist")
+                    if bib_list:
+                        ref_items = []
+                        for li in bib_list.find_all("li", class_="ltx_bibitem"):
+                            ref_items.append(li.get_text(separator=" ", strip=True))
+                        refs_text = "\n".join(ref_items)
+
+                max_chars = 24_000
+                return body_text[:max_chars], refs_text
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    import time
+                    time.sleep(2 ** attempt)
+                    continue
+                log.warning("HTTP %d fetching ar5iv %s", e.response.status_code, arxiv_id)
+                return "", ""
+            except httpx.RequestError as e:
+                log.warning("Request error fetching ar5iv %s: %s", arxiv_id, e)
+                if attempt < 2:
+                    import time
+                    time.sleep(1)
+                    continue
+                return "", ""
+        return "", ""
+
+    # 1. Fetch seed paper (full text via ar5iv HTML — needed for bibliography)
     update("fetch_seed", 0.05, f"Fetching seed paper: {seed_url}")
-    time.sleep(0.2)
 
     # Extract arxiv ID from URL
     seed_id = seed_url.rstrip("/").split("/")[-1]
     seed_id = re.sub(r"v\d+$", "", seed_id)  # strip version
 
-    # Search arXiv for the seed
+    # Search arXiv for the seed (fast: single lookup)
     source = ArxivSource(query=seed_id, max_results=1)
     seed_results_raw = source.fetch()
     if not seed_results_raw:
@@ -275,44 +329,13 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
         a["error"] = f"Could not find seed paper: {seed_url}"
         return
 
-    # Download seed PDF for full text
-    import arxiv as arxiv_lib
-    search = arxiv_lib.Search(query=seed_id, max_results=1)
-    client = arxiv_lib.Client()
-    arxiv_results = list(client.results(search))
-    if not arxiv_results:
-        a["status"] = "error"
-        a["error"] = f"Could not find seed paper on arXiv: {seed_id}"
-        return
+    # Fetch full text from ar5iv HTML (much faster than PDF+docling)
+    update("fetch_seed", 0.08, "Fetching full text from ar5iv...")
+    seed_body, seed_ref_section = _fetch_arxiv_html(seed_id)
+    if not seed_body:
+        # Fallback: try abstract only
+        seed_body = seed_results_raw[0].content if seed_results_raw else ""
 
-    arxiv_result = arxiv_results[0]
-    pdf_url = arxiv_result.pdf_url
-    if not pdf_url:
-        a["status"] = "error"
-        a["error"] = "Seed paper has no PDF URL"
-        return
-
-    # Download and parse PDF
-    download_dir = Path("data/papers")
-    download_dir.mkdir(parents=True, exist_ok=True)
-    safe_id = seed_id.replace("/", "_")
-    pdf_path = download_dir / f"{safe_id}.pdf"
-
-    if not pdf_path.exists():
-        req = urllib.request.Request(pdf_url, headers={"User-Agent": "kgraph/0.1"})
-        with urllib.request.urlopen(req) as resp, open(pdf_path, "wb") as f:
-            f.write(resp.read())
-
-    update("fetch_seed", 0.10, "Parsing seed PDF...")
-    try:
-        docling_doc, seed_text = parse_pdf_full(pdf_path)
-    except Exception as e:
-        log.warning("Failed to parse seed PDF: %s", e)
-        a["status"] = "error"
-        a["error"] = f"Failed to parse seed PDF: {e}"
-        return
-
-    seed_body, seed_ref_section = _split_at_references(seed_text)
     seed_title = seed_results_raw[0].metadata.get("title", seed_id)
 
     seed_doc = RawDocument(
@@ -320,7 +343,6 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
         content=seed_body,
         source="arxiv_seed",
         metadata={"title": seed_title},
-        docling_doc=docling_doc,
     )
 
     a["papers"] = [{"id": SEED_DOC_ID, "title": seed_title}]
@@ -328,7 +350,11 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
 
     # 2. Parse bibliography
     update("bibliography", 0.20, "Parsing bibliography...")
-    time.sleep(0.1)
+    # ar5iv refs come as one-per-line from <li> items; prefix with "- " for parser
+    if seed_ref_section:
+        seed_ref_section = "\n".join(
+            f"- {line.strip()}" for line in seed_ref_section.splitlines() if line.strip()
+        )
     bibliography = parse_bibliography_entries(seed_ref_section)
     log.info("Parsed %d bibliography entries", len(bibliography))
 
@@ -342,27 +368,16 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
     ref_ids = ref_ids[:max_references]
     update("bibliography", 0.25, f"Found {len(bibliography)} entries, resolving {len(ref_ids)}")
 
-    # 3. Resolve references (quick: abstracts only; deep: full text)
-    ref_docs = []
-    total = len(ref_ids)
-    for i, rid in enumerate(ref_ids, 1):
-        update("fetch_refs", 0.25 + (i / total) * 0.25, f"Resolving {i}/{total}: {rid}")
+    # 3. Resolve references (quick: abstracts only; deep: full text via ar5iv)
+
+    def _resolve_one_ref(rid: str):
+        """Resolve a single reference. Returns RawDocument or None."""
         try:
             ref_source = ArxivSource(query=rid, max_results=1)
             if mode == "deep":
-                # Download PDF for full text
-                ref_arxiv = list(arxiv_lib.Client().results(arxiv_lib.Search(query=rid, max_results=1)))
-                if ref_arxiv and ref_arxiv[0].pdf_url:
-                    ref_pdf_dir = download_dir
-                    ref_safe_id = rid.replace("/", "_")
-                    ref_pdf_path = ref_pdf_dir / f"{ref_safe_id}.pdf"
-                    if not ref_pdf_path.exists():
-                        req = urllib.request.Request(ref_arxiv[0].pdf_url, headers={"User-Agent": "kgraph/0.1"})
-                        with urllib.request.urlopen(req) as resp, open(ref_pdf_path, "wb") as f:
-                            f.write(resp.read())
-                    _, ref_text = parse_pdf_full(ref_pdf_path)
-                    ref_body, _ = _split_at_references(ref_text)
-                else:
+                # Full text from ar5iv HTML (much faster than PDF+docling)
+                ref_body, _ = _fetch_arxiv_html(rid)
+                if not ref_body:
                     ref_fetched = ref_source.fetch()
                     ref_body = ref_fetched[0].content if ref_fetched else ""
             else:
@@ -376,7 +391,7 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
                 )),
                 None,
             )
-            ref_docs.append(RawDocument(
+            return RawDocument(
                 id=rid,
                 content=ref_body,
                 source="citation_ref",
@@ -384,9 +399,25 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
                     "title": entry.title if entry else rid,
                     "year": entry.year if entry else None,
                 },
-            ))
+            )
         except Exception as e:
             log.warning("Failed to resolve %s: %s", rid, e)
+            return None
+
+    # Parallel fetching for both modes
+    ref_docs = []
+    total = len(ref_ids)
+
+    completed = 0
+    with ThreadPoolExecutor(max_workers=min(8, total)) as pool:
+        futures = {pool.submit(_resolve_one_ref, rid): rid for rid in ref_ids}
+        for future in as_completed(futures):
+            completed += 1
+            rid = futures[future]
+            update("fetch_refs", 0.25 + (completed / total) * 0.25, f"Resolved {completed}/{total}: {rid}")
+            doc = future.result()
+            if doc:
+                ref_docs.append(doc)
 
     if not ref_docs:
         a["status"] = "error"
