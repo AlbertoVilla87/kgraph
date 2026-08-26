@@ -25,8 +25,15 @@ def _spacy_stopwords() -> Set[str]:
             "spaCy is not installed. Add 'spacy' to your dependencies."
         )
 
-    # Try common model names in order of preference
-    for model_name in ("en_core_web_sm", "en_core_web_md", "en_core_web_lg"):
+    # Try local model first, then standard model names
+    import os
+    local_model = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "models", "en_core_web_sm"
+    )
+    local_model = os.path.normpath(local_model)
+
+    model_names = [local_model, "en_core_web_sm", "en_core_web_md", "en_core_web_lg"]
+    for model_name in model_names:
         try:
             nlp = spacy.load(model_name)
             return set(nlp.Defaults.stop_words)
