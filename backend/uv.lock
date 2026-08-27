@@ -2003,6 +2003,7 @@ version = "1.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "arxiv" },
+    { name = "beautifulsoup4" },
     { name = "docling" },
     { name = "fastapi" },
     { name = "gliner" },
@@ -2029,6 +2030,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "arxiv", specifier = ">=4.0.1" },
+    { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "docling", specifier = ">=2.113.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "gliner", specifier = ">=0.2.28" },
