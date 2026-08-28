@@ -351,8 +351,11 @@ class CitationDiscovery:
         cite_ctx = find_citing_contexts(seed_doc.content, entry_by_id, ref_ids)
 
         # Qwen extraction per reference
+        from tqdm import tqdm
         insights: Dict[str, RefInsights] = {}
-        for rid in ref_ids:
+        pbar = tqdm(ref_ids, desc="Qwen analysis", unit="ref", leave=False)
+        for rid in pbar:
+            pbar.set_postfix_str(rid)
             entry = entry_by_id[rid]
             context = "\n".join(cite_ctx.get(rid, [])[:4])
             if not context:
@@ -365,6 +368,7 @@ class CitationDiscovery:
                 log.info("Qwen extracted insights for %s", rid)
             except Exception as e:
                 log.warning("Qwen failed for %s: %s", rid, e)
+        pbar.close()
 
         log.info("Qwen analysis: %d/%d references", len(insights), len(ref_ids))
 
