@@ -28,8 +28,6 @@ from kgraph.graph.models import Entity, RawDocument, Relation
 from kgraph.segmentation.chunker import Segmenter
 from kgraph.segmentation.models import Segment
 
-from gliner import GLiNER
-
 
 def _default_workers() -> int:
     return max(1, (os.cpu_count() or 1) // 2)
@@ -39,8 +37,9 @@ class SegmentedGraphExtractor:
     """Build a ``GLiNERGraph`` by extracting entities/relations per segment."""
 
     def __init__(self, config: PipelineConfig):
+        from kgraph.extractors.model_cache import get_gliner_model
         self.config = config
-        self.model = GLiNER.from_pretrained(config.ner.name)
+        self.model = get_gliner_model(config.ner.name)
         self.entity_labels = config.entities
         self.relation_labels = config.relations
         self.entity_threshold = config.thresholds.entity
