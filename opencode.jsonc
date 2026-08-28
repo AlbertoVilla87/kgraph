@@ -10,5 +10,20 @@
       ],
       "enabled": true
     }
+  },
+  "permission": {
+    "bash": {
+      "git add *": "ask",
+      "git commit *": "ask",
+      "git push *": "ask",
+      "git tag *": "ask",
+      "gh pr create *": "ask",
+      "git merge *": "ask",
+      "git rebase *": "ask",
+      "git reset *": "ask",
+      "git checkout -b *": "ask",
+      "git branch -D *": "ask",
+      "git clean *": "ask"
+    }
   }
 }
