@@ -76,7 +76,8 @@ def _relations_from_raw(raw: List[dict], doc_id: str) -> List[Relation]:
 
 class EntityRelationExtractor:
     def __init__(self, config: PipelineConfig, model=None):
-        self.model = model if model is not None else GLiNER.from_pretrained(config.ner.name)
+        from kgraph.extractors.model_cache import get_gliner_model
+        self.model = model if model is not None else get_gliner_model(config.ner.name)
         self.entity_labels = config.entities
         self.relation_labels = config.relations
         self.entity_threshold = config.thresholds.entity

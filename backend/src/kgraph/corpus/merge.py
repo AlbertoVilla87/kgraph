@@ -49,10 +49,11 @@ class CorpusGraphBuilder:
     """
 
     def __init__(self, config_path: str, workers: int = 0):
+        from kgraph.extractors.model_cache import get_gliner_model
         self.config_path = config_path
         self.base_config = load_pipeline_config(config_path)
         self.workers = workers or _default_workers()
-        self.model = GLiNER.from_pretrained(self.base_config.ner.name)
+        self.model = get_gliner_model(self.base_config.ner.name)
         self.topic_graph = TopicGraph(self.base_config)
         self.segmenter = Segmenter(
             self.base_config.ner.name, self.base_config.segmentation
