@@ -92,3 +92,6 @@ backend/src/kgraph/
 - [Segmentation](segmentation.md) — stage 5: beating the 1024-token window
 - [Corpus & multi-document](corpus.md) — stage 6: the cross-document originality view
 - [Data model & configuration](data-model.md) — `Entity`, `Relation`, `RawDocument`, and `params.yaml`
+- [Runtime & API architecture](runtime.md) — request lifecycle (job + polling), pipeline composition, concurrency
+- [Deployment](deployment.md) — target AWS architecture (design phase)
+- [CI/CD & AWS bootstrap](pipelines.md) — account → containers → Terraform → release

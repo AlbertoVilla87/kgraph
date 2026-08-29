@@ -41,6 +41,10 @@ nav:
       - Segmentation: architecture/segmentation.md
       - Corpus & multi-document: architecture/corpus.md
       - Data model & configuration: architecture/data-model.md
+      - Runtime & API architecture: architecture/runtime.md
+      - Application architecture: architecture/app-architecture.md
+      - Deployment: architecture/deployment.md
+      - CI/CD & AWS bootstrap: architecture/pipelines.md
   - Demos: demos.md
   - Experiments:
       - experiments/index.md
