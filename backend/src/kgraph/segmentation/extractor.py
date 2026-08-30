@@ -16,6 +16,7 @@ real parallelism on CPU. To avoid intra-op oversubscription each worker is
 pinned to a single torch thread when more than one worker is used.
 """
 
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple
@@ -27,6 +28,8 @@ from kgraph.graph.config import PipelineConfig
 from kgraph.graph.models import Entity, RawDocument, Relation
 from kgraph.segmentation.chunker import Segmenter
 from kgraph.segmentation.models import Segment
+
+log = logging.getLogger(__name__)
 
 
 def _default_workers() -> int:

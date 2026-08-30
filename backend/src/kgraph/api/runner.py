@@ -232,6 +232,30 @@ def _fetch_abstracts_only(source, seed_id: str, max_references: int, update) -> 
 
 
 def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, config_path: str, mode: str = "quick"):
+    """Citation-guided pipeline; always shuts down Ollama when finished.
+
+    Ollama is a local server kept only for the duration of an analysis: killing
+    it frees CPU/VRAM (and quietens the fans). The server is only terminated
+    when kgraph started it itself (see citation_graph.shutdown_ollama).
+    """
+    try:
+        _run_citation_pipeline_impl(a, seed_url, max_references, update, config_path, mode)
+    finally:
+        from kgraph.discovery.citation_graph import shutdown_ollama
+        shutdown_ollama()
+        # Release GLiNER/torch resources so the process does not keep cores
+        # busy or memory held after extraction (parity with corpus pipeline).
+        import gc
+        import torch
+        gc.collect()
+        torch.set_num_threads(1)
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+        elif torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, update, config_path: str, mode: str = "quick"):
     """Citation-guided pipeline: seed citations define the GLiNER taxonomy.
 
     quick: seed gets full text (for bibliography), refs get abstracts only
