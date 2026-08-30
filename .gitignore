@@ -21,3 +21,10 @@ node_modules/
 
 # macOS
 .DS_Store
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars.auto
+infra/terraform/lambda/_wake.zip

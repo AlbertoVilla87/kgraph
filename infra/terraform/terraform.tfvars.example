@@ -1,0 +1,7 @@
+# Copia a terraform.tfvars y ajusta para tu despliegue.
+region              = "eu-north-1"
+project             = "kgraph-astrolabe"
+instance_type       = "t3.large"       # sube a t3.xlarge para deep + Ollama
+auto_stop_seconds   = 10800            # 3 horas máx. encendida (anti-olvido)
+state_timeout_seconds = 300
+frontend_bucket     = "kgraph-astrolabe-frontend"  # global: pon algo único

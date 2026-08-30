@@ -1,25 +1,35 @@
-# Build, deploy & AWS account bootstrap (design)
+# Build, deploy & AWS account bootstrap (design → provisioning)
 
-> **Status: design.** No AWS account exists yet. This page is the full plan from
-> zero: account bootstrap → container/pipeline files → Terraform infra module →
-> first release. Decisions locked in so far (see [Deployment](deployment.md)):
+> **Status: provisioning, first slice done.** The account now exists (new AWS
+> experience, selected Region **`eu-north-1`**, profile `default`) and the first
+> Terraform slice (EC2 + wake Lambda + auto-stop scheduler + static S3/CloudFront
+> site) is written on branch `ft/aws-deploy` (`infra/terraform/`) — see
+> [AWS on-demand deployment](aws-ondemand.md). **What follows is still to build:**
+> container/pipeline files, ECR, OIDC CI auth, SSM deploys, first release.
+> Decisions locked in so far (see [Deployment](deployment.md)):
 > **OIDC** auth from CI, **models baked into the image**, **SSM Run Command** to
 > deploy, **git tag → release** trigger, **Terraform** to provision the EC2.
 
-## Stage 0 — AWS account (prerequisite, not started)
+## Stage 0 — AWS account (done via the new AWS experience)
 
-1. **Create the account** at aws.amazon.com using a dedicated root email (not a
-   shared inbox). Store the root credentials in a password manager.
-2. **Enable MFA on the root user immediately** (hardware key or TOTP app).
-3. **Enable AWS Cost Explorer + a budget alarm** (e.g. hard stop / $20 alert) so
-   nothing runs away — `t3.xlarge` is ~$75/mo of the budget envelope.
-4. **Pick a primary region.** Recommended: `eu-west-1` (Ireland) — good reach
-   from EU, and the default choice for the resources below.
-5. **Daily-use access** (never root): IAM Identity Center (preferred) or a single
-   IAM user with MFA. Install **AWS CLI v2** (`brew install awscli`) and log in.
-6. *(Later, for the GitHub side)* decide whether the **GitHub Org/User** for CI
-   is `AlbertoVilla87`/`kgraph` — this is the value Terraform pins in the OIDC
-   trust condition.
+1. ✅ **Account exists** — signed up through the **new AWS experience**
+   (project model, social sign-in). Account id `184463060626`.
+2. ✅ **Access configured** — AWS CLI v2 (2.36.x, `~/.local/bin`) with profile
+   `default`; credentials refresh every 90 days and are cached ~12 h, so a session
+   may need re-auth (`aws sso login`-style refresh) after inactivity.
+3. ⬜ **MFA / root protection** — confirm browser sign-in uses MFA in the new
+   experience before relying on it long-term.
+4. ✅ **Primary region chosen = selected Region `eu-north-1`** (Stockholm) — every
+   regional resource lives here; CloudFront is global and allowed, many services
+   (e.g. App Runner) don't exist in this Region — check availability before
+   designing around one.
+5. ⬜ **Cost guardrails** — set a budget alert / spend limit in **AWS Settings >
+   Billing** so nothing runs away; even with the on-demand model a forgotten VM
+   burns the `$200` (mitigated further by the auto-stop schedule — see
+   [AWS on-demand deployment](aws-ondemand.md)).
+6. ⬜ *(For the GitHub side)* confirm the **GitHub Org/User** for CI is
+   `AlbertoVilla87`/`kgraph` — this is the value Terraform pins in the OIDC trust
+   condition.
 
 > **Runbook deps flagged here:** Route 53 TLS needs a real **domain** you own
 > (AWS-hosted zone + ACM certificate). If you don't have one, the first cut can
@@ -61,27 +71,40 @@ Key choices encoded here:
 
 ## Stage 2 — Terraform infra module
 
+The first slice exists on branch `ft/aws-deploy` (**`infra/terraform/`**, flat single
+stack, one selected region) and is `plan`-validated. Layout:
+
 ```
-infra/
-├── main.tf            # backend(tfstate), provider, module wiring
-├── variables.tf
-├── outputs.tf         # instance id, public dns/ip, iam role arn
-└── modules/
-    ├── oidc/          # GitHub OIDC provider + IAM role (trust: repo AlbertoVilla87/kgraph)
-    └── ec2/           # instancia, SG, EBS, Route 53, SSM instance profile
+infra/terraform/
+├── main.tf            # provider (eu-north-1) + account data source
+├── variables.tf       # instance_type, auto_stop_seconds, bucket name, …
+├── locals.tf          # computed names (e.g. the wake function ARN)
+├── ec2.tf             # AMI lookup, instance, SG (80/443), EIP, SSM profile, user_data
+├── iam.tf             # roles: instance (SSM) + wake Lambda + scheduler
+├── lambda.tf          # wake function + public function URL + logs + invoke permission
+├── s3.tf             # frontend bucket (private) + CloudFront OAC distribution
+├── outputs.tf         # instance id, public IP, wake/stop URLs, frontend URL
+└── lambda/start_instance.py   # the "start on demand / arm auto-stop" handler
 ```
 
-Resources Terraform creates:
+See [AWS on-demand deployment](aws-ondemand.md) for the full walkthrough of what
+each part does and how to operate it.
 
-| Resource | Notes |
-|---|---|
-| **IAM OIDC provider** | `token.actions.githubusercontent.com`, audience `sts.amazonaws.com` |
-| **IAM role for CI** | trust condition pinned to `repo:AlbertoVilla87/kgraph:*`; policies: ECR push (`kgraph/backend`, `kgraph/frontend`), SSM `send-command`, minimal read |
-| **EC2 `t3.xlarge`** | AL2023 AMI; `user_data` runs `ec2-provision.sh`; root EBS `gp3` (~30 GiB) — **no data volume** (PDFs ephemeral) |
-| **Instance profile** | `AmazonSSMManagedInstanceCore` so SSM works |
-| **Security group** | inbound 443 (→ nginx TLS; optionally 80 redirect), **22 closed** |
-| **Elastic IP / Route 53** | A record to the instance; ACM cert when a domain exists |
-| **CloudWatch** | logs from SSM + agent; cost guardrails |
+Resources the full plan creates (✅ = already in the first slice):
+
+| Resource | ✅ | Notes |
+|---|---|---|
+| **EC2 `t3.large` (first slice) / `t3.xlarge` (full)** | ✅ | AL2023 AMI; `user_data` installs Docker; root EBS `gp3` (~30 GiB, encrypted) — **no data volume** (PDFs ephemeral) |
+| **Elastic IP** | ✅ | static public IPv4; ~`$3.6/mo` while the VM is stopped |
+| **Security group** | ✅ | inbound 443 (nginx TLS) + 80 (HTTP demo), **22 closed** |
+| **Instance profile** | ✅ | `AmazonSSMManagedInstanceCore` so SSM works |
+| **Wake Lambda + function URL** | ✅ | `GET /` starts the VM, waits for `running`, returns the IP; `?action=stop` stops it |
+| **Auto-stop scheduler** | ✅ | one-shot EventBridge schedule (default 3 h) created per start — anti-forget |
+| **Frontend S3 bucket + CloudFront** | ✅ | private bucket, OAC, SPA fallback; the site is always up |
+| **CloudWatch** | ✅ | Lambda logs (7-day retention); instance agent logs later |
+| **Route 53 / ACM** | ⬜ | DNS + TLS; needs a domain you own (fallback: EIP + HTTP meanwhile) |
+| **IAM OIDC provider + CI role** | ⬜ | `token.actions.githubusercontent.com`, trust pinned to `repo:AlbertoVilla87/kgraph`; ECR push + SSM `send-command` |
+| **ECR repos** `kgraph/backend`, `kgraph/frontend` | ⬜ | images pushed from CI, pulled on the EC2 |
 
 ## Stage 3 — CI/CD (GitHub Actions)
 
@@ -115,7 +138,7 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-ecr
-          aws-region: eu-west-1
+          aws-region: eu-north-1
       # docker buildx build → ECR: kgraph/backend, kgraph/frontend
       # tags: $GITHUB_REF_NAME (vX.Y.Z) + latest
 ```
@@ -136,7 +159,7 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-ssm
-          aws-region: eu-west-1
+          aws-region: eu-north-1
       - name: Compose up on EC2
         run: aws ssm send-command --instance-ids ${{ vars.EC2_INSTANCE_ID }} \
               --document-name AWS-RunShellScript \
@@ -152,7 +175,8 @@ jobs:
 ## Open decisions
 
 - **Domain**: do you own one for Route 53 + ACM? Fallback: Elastic IP + HTTP until then.
-- **Region**: `eu-west-1` assumed; confirm before Terraform pins it.
+- **Region**: `eu-north-1` (selected Region — fixed for this new-AWS-experience
+  project; Terraform pins it).
 - **tfstate backend**: local file now, S3 bucket later (needs the account to exist first).
 - **`.env` handling**: commit a `.env.example` only; real `.env` lives on the box,
   injected initially through SSM during provision.

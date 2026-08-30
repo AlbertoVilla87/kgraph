@@ -45,6 +45,7 @@ nav:
       - Application architecture: architecture/app-architecture.md
       - Deployment: architecture/deployment.md
       - CI/CD & AWS bootstrap: architecture/pipelines.md
+      - AWS on-demand deployment: architecture/aws-ondemand.md
   - Demos: demos.md
   - Experiments:
       - experiments/index.md
