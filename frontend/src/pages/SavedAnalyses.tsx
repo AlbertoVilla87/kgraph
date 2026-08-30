@@ -43,7 +43,7 @@ export default function SavedAnalyses() {
       <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-[var(--color-border)] bg-gray-50">
+            <tr className="border-b border-[var(--color-border)] bg-[var(--color-surface-2)]">
               <th className="text-left py-3 px-6 text-sm font-medium text-[var(--color-text-secondary)]">
                 Paper
               </th>
@@ -71,7 +71,7 @@ export default function SavedAnalyses() {
             {savedAnalyses.map((analysis) => (
               <tr
                 key={analysis.id}
-                className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                className="border-b border-[var(--color-border)] hover:bg-[var(--color-surface-2)] transition-colors"
               >
                 <td className="py-4 px-6">
                   <div className="text-sm font-medium">{analysis.title}</div>
@@ -95,13 +95,13 @@ export default function SavedAnalyses() {
                 </td>
                 <td className="py-4 px-4">
                   <div className="flex items-center justify-center gap-2">
-                    <button className="p-1.5 rounded-lg hover:bg-gray-100 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)]">
+                    <button className="p-1.5 rounded-lg hover:bg-[var(--color-surface-3)] text-[var(--color-text-secondary)] hover:text-[var(--color-primary)]">
                       <Eye size={14} />
                     </button>
-                    <button className="p-1.5 rounded-lg hover:bg-gray-100 text-[var(--color-text-secondary)] hover:text-[var(--color-blue)]">
+                    <button className="p-1.5 rounded-lg hover:bg-[var(--color-surface-3)] text-[var(--color-text-secondary)] hover:text-[var(--color-blue)]">
                       <GitBranch size={14} />
                     </button>
-                    <button className="p-1.5 rounded-lg hover:bg-gray-100 text-[var(--color-text-secondary)] hover:text-[var(--color-error)]">
+                    <button className="p-1.5 rounded-lg hover:bg-[var(--color-surface-3)] text-[var(--color-text-secondary)] hover:text-[var(--color-error)]">
                       <Trash2 size={14} />
                     </button>
                   </div>

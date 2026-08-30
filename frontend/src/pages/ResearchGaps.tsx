@@ -38,13 +38,13 @@ export default function ResearchGaps() {
           {missingTopics.map((topic) => (
             <div
               key={topic.name}
-              className="p-3 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer"
+              className="p-3 rounded-lg bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-3)] cursor-pointer"
             >
               <div className="text-sm font-medium">{topic.name}</div>
               <div className="flex items-center gap-4 mt-2">
                 <div className="flex gap-1">
                   {topic.relatedTopics.map((t) => (
-                    <span key={t} className="px-2 py-0.5 rounded-full text-[10px] bg-gray-200 text-gray-600">
+                    <span key={t} className="px-2 py-0.5 rounded-full text-[10px] bg-[var(--color-surface-3)] text-[var(--color-text-secondary)]">
                       {t}
                     </span>
                   ))}
@@ -71,7 +71,7 @@ export default function ResearchGaps() {
           {missingRelationships.map((rel) => (
             <div
               key={`${rel.source}-${rel.relation}-${rel.target}`}
-              className="p-3 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer"
+              className="p-3 rounded-lg bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-3)] cursor-pointer"
             >
               <div className="text-sm">
                 <span className="font-medium">{rel.source}</span>
@@ -101,16 +101,16 @@ export default function ResearchGaps() {
           {underexploredCombinations.map((combo) => (
             <div
               key={combo.topics.join('-')}
-              className="p-4 rounded-lg bg-gray-50 border border-dashed border-gray-300"
+              className="p-4 rounded-lg bg-[var(--color-surface-2)] border border-dashed border-[var(--color-line)]"
             >
               <div className="flex items-center gap-2">
                 {combo.topics.map((topic, i) => (
                   <span key={topic} className="flex items-center gap-2">
-                    <span className="px-3 py-1 rounded-full text-sm bg-[var(--color-teal)] bg-opacity-10 text-[var(--color-teal)] font-medium">
+                    <span className="px-3 py-1 rounded-full text-sm bg-[var(--color-teal)]/10 text-[var(--color-teal)] font-medium">
                       {topic}
                     </span>
                     {i < combo.topics.length - 1 && (
-                      <span className="text-gray-400">+</span>
+                      <span className="text-[var(--color-text-faint)]">+</span>
                     )}
                   </span>
                 ))}

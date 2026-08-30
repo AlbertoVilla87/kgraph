@@ -1,5 +1,6 @@
-import { useEffect, useRef, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import cytoscape, { Core, EventObject } from 'cytoscape';
+import { ZoomIn, ZoomOut, Maximize2, RotateCcw } from 'lucide-react';
 
 export interface GraphNode {
   id: string;
@@ -28,23 +29,29 @@ interface KnowledgeGraphProps {
   onNodeClick?: (node: GraphNode) => void;
   onEdgeClick?: (edge: GraphEdge) => void;
   height?: number;
+  fill?: boolean;
   filter?: NodeFilter;
-  onFilterChange?: (filter: NodeFilter) => void;
 }
 
 const DOC_COLORS = [
-  '#8b5cf6', // purple
-  '#3b82f6', // blue
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#10b981', // emerald
-  '#f97316', // orange
-  '#6366f1', // indigo
-  '#ec4899', // pink
+  '#a78bfa', // violet
+  '#5b8cff', // cobalt
+  '#f5b759', // amber
+  '#fb7185', // red
+  '#34d399', // emerald
+  '#fb923c', // orange
+  '#2dd4bf', // teal
+  '#f472b6', // pink
 ];
 
-const SHARED_COLOR = '#0d9488';
-const ORPHAN_OPACITY = 0.35;
+const DOC_COLOR_GRADIENT = `conic-gradient(${DOC_COLORS.join(', ')}, ${DOC_COLORS[0]})`;
+
+const SHARED_COLOR = '#f8fafc';
+const SHARED_EDGE_COLOR = '#35d6c1';
+const EDGE_COLOR = '#3f4c5f';
+const NODE_OUTLINE = '#0b1120';
+const LABEL_COLOR = '#c9d4e3';
+const ORPHAN_OPACITY = 0.28;
 
 function computeOrphanSet(nodes: GraphNode[], edges: GraphEdge[]): Set<string> {
   const connected = new Set<string>();
@@ -61,10 +68,12 @@ export default function KnowledgeGraph({
   onNodeClick,
   onEdgeClick,
   height = 500,
+  fill = false,
   filter = 'all',
 }: KnowledgeGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const [cyReady, setCyReady] = useState(false);
 
   const docColorMap = useMemo(() => {
     const allDocIds = new Set<string>();
@@ -84,15 +93,15 @@ export default function KnowledgeGraph({
       const docs = node.documents || [];
       if (docs.length > 1) return SHARED_COLOR;
       if (docs.length === 1 && docColorMap[docs[0]!]) return docColorMap[docs[0]!]!;
-      return '#94a3b8';
+      return '#5a6b80';
     },
     [docColorMap],
   );
 
   const getEdgeColor = useCallback((edge: GraphEdge): string => {
     const docs = edge.documents || [];
-    if (docs.length > 1) return SHARED_COLOR;
-    return '#94a3b8';
+    if (docs.length > 1) return SHARED_EDGE_COLOR;
+    return EDGE_COLOR;
   }, []);
 
   useEffect(() => {
@@ -135,7 +144,7 @@ export default function KnowledgeGraph({
       container: containerRef.current,
       elements,
       style: [
-        // --- Shared nodes: thick border + glow ---
+        // --- Shared nodes: thick border + halo ---
         {
           selector: 'node[docCount > 1]',
           style: {
@@ -143,9 +152,9 @@ export default function KnowledgeGraph({
             'border-color': 'data(docColor)',
             'border-style': 'solid',
             'background-color': 'data(docColor)',
-            'background-opacity': 0.9,
-            'overlay-padding': '6px',
-            'overlay-opacity': 0.15,
+            'background-opacity': 0.92,
+            'overlay-padding': '8px',
+            'overlay-opacity': 0.18,
             'overlay-color': 'data(docColor)',
           },
         },
@@ -156,7 +165,7 @@ export default function KnowledgeGraph({
             'border-width': 2,
             'border-color': 'data(docColor)',
             'background-color': 'data(docColor)',
-            'background-opacity': 0.85,
+            'background-opacity': 0.88,
           },
         },
         // --- Orphan nodes: dimmed ---
@@ -173,7 +182,7 @@ export default function KnowledgeGraph({
           selector: 'node',
           style: {
             label: 'data(label)',
-            color: '#1e293b',
+            color: LABEL_COLOR,
             'font-size': '11px',
             'font-weight': '500' as cytoscape.Css.FontWeight,
             width: (ele: cytoscape.NodeSingular) => {
@@ -186,18 +195,18 @@ export default function KnowledgeGraph({
             },
             'text-valign': 'bottom',
             'text-margin-y': 6,
-            'text-outline-color': '#fff',
-            'text-outline-width': 2,
+            'text-outline-color': NODE_OUTLINE,
+            'text-outline-width': 3,
           },
         },
-        // --- Shared edges: thicker + colored ---
+        // --- Shared edges: thicker + phosphor ---
         {
           selector: 'edge[docCount > 1]',
           style: {
             width: (ele: cytoscape.EdgeSingular) => 2 + ele.data('confidence') * 2,
-            'line-color': SHARED_COLOR,
-            'target-arrow-color': SHARED_COLOR,
-            'line-opacity': (ele: cytoscape.EdgeSingular) => 0.5 + ele.data('confidence') * 0.5,
+            'line-color': SHARED_EDGE_COLOR,
+            'target-arrow-color': SHARED_EDGE_COLOR,
+            'line-opacity': (ele: cytoscape.EdgeSingular) => 0.55 + ele.data('confidence') * 0.45,
           },
         },
         // --- Unique edges: thinner ---
@@ -205,9 +214,9 @@ export default function KnowledgeGraph({
           selector: 'edge[docCount = 1]',
           style: {
             width: (ele: cytoscape.EdgeSingular) => 1 + ele.data('confidence') * 1.5,
-            'line-color': '#cbd5e1',
-            'target-arrow-color': '#cbd5e1',
-            'line-opacity': (ele: cytoscape.EdgeSingular) => 0.35 + ele.data('confidence') * 0.45,
+            'line-color': EDGE_COLOR,
+            'target-arrow-color': EDGE_COLOR,
+            'line-opacity': (ele: cytoscape.EdgeSingular) => 0.35 + ele.data('confidence') * 0.4,
           },
         },
         // --- Base edge style ---
@@ -218,11 +227,11 @@ export default function KnowledgeGraph({
             'curve-style': 'bezier',
             label: 'data(relation)',
             'font-size': '9px',
-            color: '#94a3b8',
+            color: '#62748c',
             'text-rotation': 'autorotate',
             'text-margin-y': -8,
-            'text-outline-color': '#fff',
-            'text-outline-width': 1.5,
+            'text-outline-color': NODE_OUTLINE,
+            'text-outline-width': 2,
           },
         },
         // --- Selected node ---
@@ -230,8 +239,8 @@ export default function KnowledgeGraph({
           selector: 'node:selected',
           style: {
             'border-width': 4,
-            'border-color': '#f59e0b',
-            'background-color': '#f59e0b',
+            'border-color': '#f5b759',
+            'background-color': 'data(docColor)',
             opacity: 1,
           },
         },
@@ -271,8 +280,10 @@ export default function KnowledgeGraph({
     }
 
     cyRef.current = cy;
+    setCyReady(true);
 
     return () => {
+      setCyReady(false);
       cy.destroy();
     };
   }, [nodes, edges, onNodeClick, onEdgeClick, docColorMap, orphanIds, getNodeColor, getEdgeColor]);
@@ -302,34 +313,79 @@ export default function KnowledgeGraph({
   }, [filter]);
 
   return (
-    <div className="relative">
+    <div className="relative h-full w-full canvas-rings">
       <div
         ref={containerRef}
-        style={{ width: '100%', height: `${height}px` }}
-        className="bg-gray-50 rounded-lg"
+        style={fill ? { width: '100%', height: '100%' } : { width: '100%', height: `${height}px` }}
       />
+
+      {/* Floating zoom controls */}
+      <div className="absolute top-3 right-3 glass-chip rounded-xl p-1 flex flex-col gap-0.5">
+        <button
+          onClick={() => cyRef.current?.zoom(cyRef.current.zoom() + 0.35)}
+          disabled={!cyReady}
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-3)] disabled:opacity-40 transition-colors"
+          title="Zoom in"
+        >
+          <ZoomIn size={15} />
+        </button>
+        <button
+          onClick={() => cyRef.current?.zoom(cyRef.current.zoom() - 0.35)}
+          disabled={!cyReady}
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-3)] disabled:opacity-40 transition-colors"
+          title="Zoom out"
+        >
+          <ZoomOut size={15} />
+        </button>
+        <div className="w-6 h-px bg-[var(--color-line)] mx-auto" />
+        <button
+          onClick={() => cyRef.current?.fit(undefined, 40)}
+          disabled={!cyReady}
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-3)] disabled:opacity-40 transition-colors"
+          title="Fit to view"
+        >
+          <Maximize2 size={15} />
+        </button>
+        <button
+          onClick={() => {
+            const cy = cyRef.current;
+            if (!cy) return;
+            cy.reset();
+            cy.fit(undefined, 40);
+          }}
+          disabled={!cyReady}
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-3)] disabled:opacity-40 transition-colors"
+          title="Reset view"
+        >
+          <RotateCcw size={15} />
+        </button>
+      </div>
+
       {/* Inline legend */}
-      <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-200 px-3 py-2 text-[10px] space-y-1.5 shadow-sm">
-        <div className="font-medium text-gray-600 mb-1">Legend</div>
+      <div className="absolute bottom-3 left-3 glass-chip rounded-xl px-3 py-2.5 text-[10px] space-y-1.5">
+        <div className="data-label mb-1">field legend</div>
         <div className="flex items-center gap-2">
           <span className="inline-block w-3 h-3 rounded-full" style={{ background: SHARED_COLOR, border: '2px solid ' + SHARED_COLOR }} />
-          <span>Shared (2+ papers)</span>
+          <span className="text-[var(--color-text-secondary)]">Shared (2+ papers)</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-block w-3 h-3 rounded-full" style={{ background: DOC_COLORS[0], border: '2px solid ' + DOC_COLORS[0] }} />
-          <span>Unique to paper</span>
+          <span
+            className="inline-block w-3 h-3 rounded-full"
+            style={{ background: DOC_COLOR_GRADIENT, border: '2px solid ' + NODE_OUTLINE }}
+          />
+          <span className="text-[var(--color-text-secondary)]">Unique to paper — a color per paper</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-block w-3 h-3 rounded-full border border-dashed border-gray-400" style={{ background: '#94a3b8', opacity: ORPHAN_OPACITY }} />
-          <span>Orphan (no edges)</span>
+          <span className="inline-block w-3 h-3 rounded-full border border-dashed" style={{ background: '#5a6b80', opacity: ORPHAN_OPACITY }} />
+          <span className="text-[var(--color-text-secondary)]">Orphan — no edges</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-block w-5 h-0.5 rounded" style={{ background: SHARED_COLOR }} />
-          <span>Shared edge</span>
+          <span className="inline-block w-5 h-0.5 rounded" style={{ background: SHARED_EDGE_COLOR }} />
+          <span className="text-[var(--color-text-secondary)]">Shared edge</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-block w-5 h-0.5 rounded" style={{ background: '#cbd5e1' }} />
-          <span>Unique edge</span>
+          <span className="inline-block w-5 h-0.5 rounded" style={{ background: EDGE_COLOR }} />
+          <span className="text-[var(--color-text-secondary)]">Unique edge</span>
         </div>
       </div>
     </div>

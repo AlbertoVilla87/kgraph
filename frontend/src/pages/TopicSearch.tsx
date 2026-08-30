@@ -47,17 +47,17 @@ export default function TopicSearch() {
           <div className="relative flex-1">
             <Search
               size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-faint)]"
             />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Enter a topic (e.g. 'few-shot learning')"
-              className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              className="field w-full pl-9 pr-4 py-2.5 text-sm"
             />
           </div>
-          <button className="px-4 py-2.5 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-hover)] flex items-center gap-2">
+          <button className="px-4 py-2.5 btn-primary rounded-lg text-sm font-medium flex items-center gap-2">
             <Plus size={14} />
             Add
           </button>
@@ -75,8 +75,8 @@ export default function TopicSearch() {
                 onClick={() => setSelectedTopic(topic.name)}
                 className={`w-full text-left p-3 rounded-lg transition-colors ${
                   selectedTopic === topic.name
-                    ? 'bg-[var(--color-primary)] bg-opacity-10 border border-[var(--color-primary)]'
-                    : 'bg-gray-50 hover:bg-gray-100'
+                    ? 'bg-[var(--color-primary-soft)] border border-[var(--color-primary-glow)]'
+                    : 'bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-3)]'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -84,10 +84,10 @@ export default function TopicSearch() {
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
                       topic.status === 'found'
-                        ? 'bg-green-100 text-green-700'
+                        ? 'bg-[var(--color-primary-soft)] text-[var(--color-primary)]'
                         : topic.status === 'partial'
-                        ? 'bg-orange-100 text-orange-700'
-                        : 'bg-red-100 text-red-700'
+                        ? 'bg-[var(--color-warning)]/15 text-[var(--color-warning)]'
+                        : 'bg-[var(--color-error)]/15 text-[var(--color-error)]'
                     }`}
                   >
                     {topic.status}
@@ -107,10 +107,10 @@ export default function TopicSearch() {
                 <span
                   className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                     selected.status === 'found'
-                      ? 'bg-green-100 text-green-700'
+                      ? 'bg-[var(--color-primary-soft)] text-[var(--color-primary)]'
                       : selected.status === 'partial'
-                      ? 'bg-orange-100 text-orange-700'
-                      : 'bg-red-100 text-red-700'
+                      ? 'bg-[var(--color-warning)]/15 text-[var(--color-warning)]'
+                      : 'bg-[var(--color-error)]/15 text-[var(--color-error)]'
                   }`}
                 >
                   {selected.status}
@@ -124,7 +124,7 @@ export default function TopicSearch() {
                   {selected.documents.map((doc) => (
                     <span
                       key={doc}
-                      className="px-3 py-1 rounded-full text-xs bg-blue-100 text-blue-700"
+                      className="px-3 py-1 rounded-full text-xs bg-[var(--color-cobalt)]/15 text-[var(--color-cobalt)]"
                     >
                       {doc}
                     </span>
@@ -139,7 +139,7 @@ export default function TopicSearch() {
                   {selected.relatedTopics.map((topic) => (
                     <span
                       key={topic}
-                      className="px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-700"
+                      className="px-3 py-1 rounded-full text-xs bg-[var(--color-surface-3)] text-[var(--color-text-secondary)]"
                     >
                       {topic}
                     </span>
@@ -154,7 +154,7 @@ export default function TopicSearch() {
                   {selected.relationships.map((rel) => (
                     <div
                       key={`${rel.source}-${rel.relation}-${rel.target}`}
-                      className="p-3 rounded-lg bg-gray-50"
+                      className="p-3 rounded-lg bg-[var(--color-surface-2)]"
                     >
                       <span className="text-sm">
                         <span className="font-medium">{rel.source}</span>
@@ -168,7 +168,7 @@ export default function TopicSearch() {
                 </div>
               </div>
 
-              <button className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-hover)]">
+              <button className="px-4 py-2 btn-primary rounded-lg text-sm font-medium">
                 Show in Graph
               </button>
             </>

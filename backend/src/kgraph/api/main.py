@@ -20,8 +20,8 @@ logging.getLogger("litellm").setLevel(logging.WARNING)
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 app = FastAPI(
-    title="ArXiv Graph Explorer API",
-    description="Knowledge graph extraction and analysis for arXiv papers",
+    title="Astrolabe API",
+    description="Citation-aware knowledge graph extraction and analysis for arXiv papers",
     version="0.1.0",
 )
 

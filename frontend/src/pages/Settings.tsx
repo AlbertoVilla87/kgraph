@@ -20,8 +20,8 @@ export default function Settings() {
                   Switch between light and dark themes
                 </div>
               </div>
-              <button className="w-11 h-6 bg-gray-200 rounded-full relative transition-colors">
-                <div className="w-5 h-5 bg-white rounded-full absolute left-0.5 top-0.5 shadow transition-transform" />
+              <button className="w-11 h-6 bg-[var(--color-primary-soft)] border border-[var(--color-primary-glow)] rounded-full relative transition-colors">
+                <div className="w-5 h-5 bg-[var(--color-primary)] rounded-full absolute left-[18px] top-0.5 shadow-[0_0_10px_var(--color-primary-glow)] transition-transform" />
               </button>
             </div>
           </div>
@@ -41,7 +41,7 @@ export default function Settings() {
               <input
                 type="number"
                 defaultValue={20}
-                className="w-32 px-3 py-2 rounded-lg border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                className="field w-32 px-3 py-2 text-sm"
               />
             </div>
             <div>
@@ -55,7 +55,7 @@ export default function Settings() {
                 step={0.1}
                 min={0}
                 max={1}
-                className="w-32 px-3 py-2 rounded-lg border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                className="field w-32 px-3 py-2 text-sm"
               />
             </div>
           </div>
@@ -70,12 +70,12 @@ export default function Settings() {
             <div>
               <label className="text-sm font-medium">Backend URL</label>
               <p className="text-xs text-[var(--color-text-secondary)] mb-2">
-                URL of the kgraph backend API
+                URL of the Astrolabe backend API
               </p>
               <input
                 type="text"
                 defaultValue="http://localhost:8000"
-                className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                className="field w-full px-3 py-2 text-sm"
               />
             </div>
           </div>

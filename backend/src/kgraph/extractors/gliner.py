@@ -229,12 +229,16 @@ class GLiNERGraph(EntityRelationExtractor):
                 score=relation.score,
                 count=1,
                 source_doc=relation.source_doc,
+                docs={relation.source_doc} if relation.source_doc else set(),
             )
             return
 
         existing = self.graph.edges[source_id, target_id, key]
         existing["score"] = max(existing["score"], relation.score)
         existing["count"] = existing.get("count", 1) + 1
+        docs = existing.setdefault("docs", set())
+        if relation.source_doc:
+            docs.add(relation.source_doc)
 
     def _find_edge(self, source_id: str, target_id: str, relation_type: str):
         """Return the edge key between two nodes with the given relation type."""
