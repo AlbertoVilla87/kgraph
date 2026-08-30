@@ -1,10 +1,9 @@
 import { useState, useCallback } from 'react';
 import {
   GitBranch,
-  Sparkles,
   ArrowRight,
-  Users,
   BookOpen,
+  Compass,
   Plus,
   X,
 } from 'lucide-react';
@@ -39,10 +38,16 @@ interface AnalysisResult {
   stats: Record<string, unknown>;
 }
 
-const mockUserTopics = [
-  { id: '1', name: 'Few-shot Learning', status: 'found' as const },
-  { id: '2', name: 'Graph Neural Networks', status: 'partial' as const },
-  { id: '3', name: 'Quantum Computing', status: 'not_found' as const },
+interface UserTopic {
+  id: string;
+  name: string;
+  status: 'found' | 'partial' | 'not_found';
+}
+
+const mockUserTopics: UserTopic[] = [
+  { id: '1', name: 'Few-shot Learning', status: 'found' },
+  { id: '2', name: 'Graph Neural Networks', status: 'partial' },
+  { id: '3', name: 'Quantum Computing', status: 'not_found' },
 ];
 
 export default function Overview() {
@@ -53,7 +58,7 @@ export default function Overview() {
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [userTopics, setUserTopics] = useState(mockUserTopics);
+  const [userTopics, setUserTopics] = useState<UserTopic[]>(mockUserTopics);
   const [newTopic, setNewTopic] = useState('');
   const [graphFilter, setGraphFilter] = useState<NodeFilter>('all');
 
@@ -114,7 +119,7 @@ export default function Overview() {
     if (!newTopic.trim()) return;
     setUserTopics([
       ...userTopics,
-      { id: String(Date.now()), name: newTopic.trim(), status: 'not_found' as const },
+      { id: String(Date.now()), name: newTopic.trim(), status: 'not_found' },
     ]);
     setNewTopic('');
   };
@@ -125,336 +130,313 @@ export default function Overview() {
 
   const graphNodes: GraphNode[] = analysisResult?.topics ?? [];
   const graphEdges: GraphEdge[] = analysisResult?.relationships ?? [];
+  const sharedTopics = graphNodes.filter((n) => (n.documents?.length ?? 0) > 1).length;
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
-      {/* Topic Input */}
-      <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
-        <h2 className="text-lg font-semibold mb-1">Analyze a Research Topic</h2>
-        <p className="text-sm text-[var(--color-text-secondary)] mb-4">
-          Start from a specific paper and discover its references.
-        </p>
-
-        {/* Depth Mode Toggle */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setDepthMode('quick')}
-              disabled={analyzing}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                depthMode === 'quick'
-                  ? 'bg-white text-[var(--color-primary)] shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Quick (~30s)
-            </button>
-            <button
-              onClick={() => setDepthMode('deep')}
-              disabled={analyzing}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                depthMode === 'deep'
-                  ? 'bg-white text-[var(--color-primary)] shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Deep (~5min)
-            </button>
+    <div className="h-full flex flex-col gap-3">
+      {/* ===================== Analysis console ===================== */}
+      <section className="glass rounded-2xl p-3.5 shrink-0 animate-rise">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mb-3">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-[var(--color-primary)] pulse-dot" />
+            <h2 className="font-display text-[17px] font-semibold tracking-tight">New citation sweep</h2>
           </div>
-          <span className="text-xs text-[var(--color-text-secondary)]">
-            {depthMode === 'quick' ? 'Abstracts only — fast overview' : 'Full text + PDF — detailed analysis'}
-          </span>
+          <p className="text-xs text-[var(--color-text-secondary)]">
+            Seed a paper and chart its references as a live knowledge graph.
+          </p>
         </div>
 
-        {/* Discovery Mode Toggle */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setDiscoveryMode('topic')}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[240px]">
+            <GitBranch size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-faint)]" />
+            <input
+              type="text"
+              value={seedUrl}
+              onChange={(e) => setSeedUrl(e.target.value)}
+              placeholder="https://arxiv.org/abs/2301.12345"
+              className="field h-11 w-full pl-10 pr-4 text-sm"
+              onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
               disabled={analyzing}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                discoveryMode === 'topic'
-                  ? 'bg-white text-[var(--color-primary)] shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Topic (KeyBERT)
+            />
+          </div>
+
+          <div className="seg">
+            <button data-active={depthMode === 'quick'} onClick={() => setDepthMode('quick')} disabled={analyzing}>
+              Quick ~30s
             </button>
-            <button
-              onClick={() => setDiscoveryMode('citation')}
-              disabled={analyzing}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                discoveryMode === 'citation'
-                  ? 'bg-white text-[var(--color-primary)] shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Citation (Qwen)
+            <button data-active={depthMode === 'deep'} onClick={() => setDepthMode('deep')} disabled={analyzing}>
+              Deep ~5min
             </button>
           </div>
-          <span className="text-xs text-[var(--color-text-secondary)]">
-            {discoveryMode === 'topic'
-              ? 'Unsupervised — KeyBERT + spaCy dependency parsing'
-              : 'Supervised — Qwen reads citing contexts'}
-          </span>
-        </div>
 
-        {/* Seed URL Input */}
-        <div className="flex gap-3">
-          <input
-            type="text"
-            value={seedUrl}
-            onChange={(e) => setSeedUrl(e.target.value)}
-            placeholder="https://arxiv.org/abs/2301.12345"
-            className="flex-1 px-4 py-2.5 rounded-lg border border-[var(--color-border)] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
-            onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
-            disabled={analyzing}
-          />
+          <div className="seg">
+            <button data-active={discoveryMode === 'topic'} onClick={() => setDiscoveryMode('topic')} disabled={analyzing}>
+              Discovery · AutoDiscover
+            </button>
+            <button data-active={discoveryMode === 'citation'} onClick={() => setDiscoveryMode('citation')} disabled={analyzing}>
+              Discovery · Citation
+            </button>
+          </div>
+
           <button
             onClick={handleAnalyze}
             disabled={analyzing || !seedUrl.trim()}
-            className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+            className="btn-primary h-11 px-5 text-sm flex items-center gap-2"
           >
             {analyzing ? (
               <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Analyzing...
+                <div className="w-4 h-4 border-2 border-[#04201c] border-t-transparent rounded-full animate-spin" />
+                Sweeping…
               </>
             ) : (
               <>
                 Expand
-                <ArrowRight size={14} />
+                <ArrowRight size={15} />
               </>
             )}
           </button>
         </div>
-        <p className="text-xs text-[var(--color-text-secondary)] mt-2">
-          Paste an arXiv URL. The system will download this paper, extract its references,
-          and analyze them together to build a citation-based knowledge graph.
+        <p className="text-[11px] text-[var(--color-text-faint)] mt-2 font-mono">
+          {depthMode === 'quick' ? '~30s · abstracts only' : '~5min · full text + PDF'}
+          <span className="mx-2 text-[var(--color-line)]">|</span>
+          {discoveryMode === 'topic' ? 'AutoDiscovers topic taxonomy from the abstract' : 'Reads citing contexts from reference papers'}
+          <span className="mx-2 text-[var(--color-line)]">|</span>
+          paste an arXiv URL to begin
         </p>
-      </div>
+      </section>
 
-      {/* Progress Bar */}
+      {/* ===================== Graph hero ===================== */}
+      <section className="relative flex-1 min-h-0 glass rounded-2xl overflow-hidden animate-rise">
+        {/* meta chip */}
+        <div className="absolute top-3 left-3 glass-chip rounded-xl px-3 py-1.5 z-10 flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]" />
+          <span className="text-[11px] font-mono text-[var(--color-text-secondary)] truncate max-w-[280px]">
+            {analyzing
+              ? 'sweep in progress…'
+              : analysisResult
+                ? `field: ${analysisResult.topic}`
+                : 'field empty — awaiting a seed paper'}
+          </span>
+        </div>
+
+        {/* filter chips */}
+        {analysisResult && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 glass-chip rounded-xl px-2 py-1.5 z-10 flex gap-1">
+            {(['all', 'main', 'reference', 'shared'] as NodeFilter[]).map((f) => {
+              const labels: Record<NodeFilter, string> = {
+                all: 'All',
+                main: 'Seed',
+                reference: 'Refs',
+                shared: 'Shared',
+                core: 'Core',
+                'seed-only': 'Seed only',
+                'refs-only': 'Refs only',
+              };
+              return (
+                <button
+                  key={f}
+                  onClick={() => setGraphFilter(f)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                    graphFilter === f
+                      ? 'text-[#04201c] bg-[var(--color-primary)]'
+                      : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-3)]'
+                  }`}
+                >
+                  {labels[f]}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* graph or empty state */}
+        {graphNodes.length > 0 ? (
+          <div className="absolute inset-0">
+            <KnowledgeGraph nodes={graphNodes} edges={graphEdges} fill filter={graphFilter} />
+          </div>
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center max-w-sm px-6 animate-pop">
+              <div className="relative w-14 h-14 mx-auto mb-5">
+                <div className="absolute inset-0 rounded-2xl bg-[var(--color-primary-soft)] rotate-12" />
+                <div className="absolute inset-0 rounded-2xl bg-[var(--color-surface-3)] -rotate-6 flex items-center justify-center">
+                  <GitBranch size={22} className="text-[var(--color-primary)]" />
+                </div>
+              </div>
+              <p className="font-display text-lg text-[var(--color-text)]">
+                {(analysisStatus && analyzing) ? 'Mapping citations…' : 'The plot, when plotted'}
+              </p>
+              <p className="text-sm text-[var(--color-text-secondary)] mt-1.5 leading-relaxed">
+                Paste an arXiv URL above and the citation graph will render here — no scrolling required.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Floating: explore your own topics */}
+        <TopicDock topics={userTopics} onAdd={handleAddTopic} onRemove={handleRemoveTopic} value={newTopic} onChange={setNewTopic} />
+      </section>
+
+      {/* ===================== Progress ===================== */}
       {analyzing && analysisStatus && (
-        <AnalysisProgress status={analysisStatus} />
+        <section className="shrink-0 animate-rise">
+          <AnalysisProgress status={analysisStatus} />
+        </section>
       )}
 
-      {/* Error */}
+      {/* ===================== Error ===================== */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+        <section className="shrink-0 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300 font-mono animate-rise">
           {error}
-        </div>
+        </section>
       )}
 
-      {/* Stats Grid */}
+      {/* ===================== Datasheet (below the graph) ===================== */}
       {analysisResult && (
-        <div className="grid grid-cols-4 gap-4">
-          <StatCard
-            icon={<BookOpen size={18} />}
-            label="Main Topics"
-            value={graphNodes.length}
-            color="var(--color-purple)"
-          />
-          <StatCard
-            icon={<GitBranch size={18} />}
-            label="Relationships"
-            value={graphEdges.length}
-            color="var(--color-blue)"
-          />
-          <StatCard
-            icon={<Users size={18} />}
-            label="Papers Analyzed"
-            value={analysisResult.papers.length}
-            color="var(--color-teal)"
-          />
-          <StatCard
-            icon={<Sparkles size={18} />}
-            label="Unique Insights"
-            value={graphNodes.filter((n) => n.source === 'main').length}
-            color="var(--color-orange)"
-          />
-        </div>
-      )}
+        <section className="shrink-0 glass rounded-2xl p-3.5 animate-rise">
+          {/* Compact statistics strip */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+            <CompactStat value={graphNodes.length} label="main topics" />
+            <CompactStat value={graphEdges.length} label="relations mapped" />
+            <CompactStat value={analysisResult.papers.length} label="references analyzed" />
+            <CompactStat value={sharedTopics} label="shared topics" accent="var(--color-violet)" />
+          </div>
 
-      {/* Papers Found */}
-      {analysisResult && analysisResult.papers.length > 0 && (
-        <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
-          <h3 className="font-semibold mb-3">Papers Analyzed</h3>
-          <div className="space-y-2">
-            {analysisResult.papers.map((paper) => (
-              <div key={paper.id} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
-                <div className="w-8 h-8 rounded bg-[var(--color-blue)] bg-opacity-10 flex items-center justify-center">
-                  <BookOpen size={14} className="text-[var(--color-blue)]" />
-                </div>
-                <div>
-                  <div className="text-sm font-medium">{paper.title}</div>
-                  <div className="text-xs text-[var(--color-text-secondary)]">{paper.id}</div>
-                </div>
+          {/* References list */}
+          <div className="flex items-center justify-between mb-1.5">
+            <h4 className="data-label">references analyzed</h4>
+            <span className="text-[10px] font-mono text-[var(--color-text-faint)]">
+              {analysisResult.papers.length} papers
+            </span>
+          </div>
+          <ul className="max-h-32 overflow-y-auto space-y-1 pr-1">
+            {analysisResult.papers.map((paper, i) => (
+              <li
+                key={paper.id}
+                className="group flex items-center gap-3 px-3 py-1.5 rounded-xl hover:bg-[var(--color-surface-3)] transition-colors"
+              >
+                <span className="text-[10px] font-mono text-[var(--color-text-faint)] w-5 text-right tabular-nums">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span className="w-6 h-6 rounded-lg bg-[var(--color-surface-3)] flex items-center justify-center shrink-0">
+                  <BookOpen size={12} className="text-[var(--color-text-secondary)]" />
+                </span>
+                <span className="text-[13px] truncate">{paper.title}</span>
+                <span className="ml-auto text-[11px] font-mono text-[var(--color-text-faint)] shrink-0 hidden md:block">
+                  {paper.id}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function CompactStat({
+  value,
+  label,
+  accent = 'var(--color-primary)',
+}: {
+  value: number;
+  label: string;
+  accent?: string;
+}) {
+  return (
+    <div className="card px-3.5 py-2 flex items-center gap-3 hover-lift">
+      <span
+        className="w-1.5 h-9 rounded-full shrink-0"
+        style={{ background: `linear-gradient(180deg, ${accent}, transparent)` }}
+      />
+      <div className="min-w-0">
+        <div className="font-mono text-lg leading-none font-medium tabular-nums" style={{ color: accent }}>
+          {value}
+        </div>
+        <div className="text-[10.5px] text-[var(--color-text-faint)] mt-1 truncate">{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function TopicDock({
+  topics,
+  onAdd,
+  onRemove,
+  value,
+  onChange,
+}: {
+  topics: UserTopic[];
+  onAdd: () => void;
+  onRemove: (id: string) => void;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="absolute bottom-3 right-3 z-10 flex flex-col items-end">
+      {open && (
+        <div className="glass-chip rounded-2xl p-3.5 w-[280px] mb-2 animate-pop shadow-[0_24px_60px_-20px_rgba(0,0,0,0.8)]">
+          <div className="flex items-baseline justify-between mb-0.5">
+            <h4 className="font-display text-sm font-semibold">Explore your own topics</h4>
+            <button onClick={() => setOpen(false)} className="p-1 rounded-md text-[var(--color-text-faint)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-3)]">
+              <X size={14} />
+            </button>
+          </div>
+          <p className="text-[11px] text-[var(--color-text-secondary)] mb-3">
+            Pin topics that matter to you — see if they surface in the field.
+          </p>
+
+          <div className="flex gap-1.5 mb-3">
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && onAdd()}
+              placeholder="e.g. few-shot learning"
+              className="field h-9 flex-1 px-3 text-[13px]"
+            />
+            <button onClick={onAdd} className="btn-primary h-9 px-3 flex items-center justify-center" title="Add topic">
+              <Plus size={15} strokeWidth={2.4} />
+            </button>
+          </div>
+
+          <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+            {topics.map((topic) => (
+              <div key={topic.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[var(--color-surface-3)]/60">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    topic.status === 'found'
+                      ? 'bg-[var(--color-success)]'
+                      : topic.status === 'partial'
+                        ? 'bg-[var(--color-warning)]'
+                        : 'bg-[var(--color-error)]'
+                  }`}
+                />
+                <span className="text-[13px] truncate flex-1">{topic.name}</span>
+                <span className="text-[10px] font-mono uppercase tracking-wide text-[var(--color-text-faint)]">
+                  {topic.status.replace('_', ' ')}
+                </span>
+                <button onClick={() => onRemove(topic.id)} className="p-0.5 text-[var(--color-text-faint)] hover:text-[var(--color-text)] rounded">
+                  <X size={12} />
+                </button>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-3 gap-6">
-        {/* Knowledge Graph (2 columns) */}
-        <div className="col-span-2 bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-lg font-semibold">Knowledge Graph</h2>
-              <p className="text-sm text-[var(--color-text-secondary)]">
-                {analysisResult
-                  ? `Topics and relationships from "${analysisResult.topic}"`
-                  : 'Analyze a topic to see the knowledge graph'}
-              </p>
-            </div>
-            {analysisResult && (
-              <div className="flex gap-2">
-                {(['all', 'core', 'seed-only', 'refs-only'] as NodeFilter[]).map((f) => {
-                  const labels: Record<NodeFilter, string> = {
-                    all: 'All',
-                    main: 'Main Paper',
-                    reference: 'References',
-                    shared: 'Shared',
-                    core: 'Core',
-                    'seed-only': 'Seed Only',
-                    'refs-only': 'Refs Only',
-                  };
-                  return (
-                    <button
-                      key={f}
-                      onClick={() => setGraphFilter(f)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                        graphFilter === f
-                          ? 'bg-[var(--color-primary)] text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {labels[f]}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          {graphNodes.length > 0 ? (
-            <KnowledgeGraph nodes={graphNodes} edges={graphEdges} height={420} filter={graphFilter} />
-          ) : (
-            <div className="h-96 bg-gray-50 rounded-lg border border-[var(--color-border)] flex items-center justify-center">
-              <div className="text-center">
-                <GitBranch size={48} className="mx-auto text-gray-300 mb-3" />
-                <p className="text-sm text-[var(--color-text-secondary)]">
-                  Knowledge graph will appear here
-                </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  Enter a topic above to start analysis
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right sidebar */}
-        <div className="space-y-6">
-          {/* User Topics */}
-          <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
-            <h3 className="font-semibold mb-1">Explore Your Own Topics</h3>
-            <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-              Add topics you are interested in and see how they connect.
-            </p>
-            <div className="flex gap-2 mb-4">
-              <input
-                type="text"
-                value={newTopic}
-                onChange={(e) => setNewTopic(e.target.value)}
-                placeholder="Enter a topic..."
-                className="flex-1 px-3 py-2 rounded-lg border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                onKeyDown={(e) => e.key === 'Enter' && handleAddTopic()}
-              />
-              <button
-                onClick={handleAddTopic}
-                className="px-3 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm hover:bg-[var(--color-primary-hover)]"
-              >
-                <Plus size={14} />
-              </button>
-            </div>
-            <div className="space-y-2">
-              {userTopics.map((topic) => (
-                <div key={topic.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50">
-                  <span className="text-sm">{topic.name}</span>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                        topic.status === 'found'
-                          ? 'bg-green-100 text-green-700'
-                          : topic.status === 'partial'
-                          ? 'bg-orange-100 text-orange-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {topic.status}
-                    </span>
-                    <button onClick={() => handleRemoveTopic(topic.id)} className="text-gray-400 hover:text-gray-600">
-                      <X size={12} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Shared vs Unique */}
-          {analysisResult && (
-            <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-6">
-              <h3 className="font-semibold mb-1">Shared vs Unique Insights</h3>
-              <p className="text-xs text-[var(--color-text-secondary)] mb-4">
-                Compare this topic with its referenced literature.
-              </p>
-              <div className="space-y-3">
-                {(() => {
-                  const stats = analysisResult.stats as Record<string, unknown>;
-                  const totalNodes = (stats?.total_nodes as number) || graphNodes.length || 1;
-                  const commonNodes = (stats?.common_nodes as number) || graphNodes.filter((n) => (n.documents?.length ?? 0) > 1).length;
-                  const uniqueNodes = totalNodes - commonNodes;
-                  const totalEdges = (stats?.total_edges as number) || graphEdges.length || 1;
-                  const commonEdges = (stats?.common_edges as number) || graphEdges.filter((e) => (e.documents?.length ?? 0) > 1).length;
-                  const sharedPct = Math.round((commonNodes / totalNodes) * 100);
-                  const uniquePct = 100 - sharedPct;
-                  return [
-                    { label: 'Shared nodes', value: commonNodes, pct: sharedPct, color: '#0d9488' },
-                    { label: 'Unique nodes', value: uniqueNodes, pct: uniquePct, color: '#8b5cf6' },
-                    { label: 'Shared edges', value: commonEdges, pct: Math.round((commonEdges / totalEdges) * 100), color: '#3b82f6' },
-                  ];
-                })().map((item) => (
-                  <div key={item.label} className="flex items-center gap-3">
-                    <div className="w-12 text-right text-sm font-medium">{item.pct}%</div>
-                    <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${item.pct}%`, backgroundColor: item.color }} />
-                    </div>
-                    <span className="text-xs text-[var(--color-text-secondary)] w-24">{item.label}</span>
-                    <span className="text-xs font-mono text-gray-500 w-8 text-right">{item.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) {
-  return (
-    <div className="bg-[var(--color-card)] rounded-xl border border-[var(--color-border)] p-5">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${color}15`, color }}>
-          {icon}
-        </div>
-      </div>
-      <div className="text-2xl font-bold">{value}</div>
-      <div className="text-sm text-[var(--color-text-secondary)]">{label}</div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="glass-chip rounded-full h-11 px-4 flex items-center gap-2.5 hover:border-[var(--color-primary-glow)] transition-all"
+      >
+        <Compass size={16} className={open ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-secondary)]'} />
+        <span className="text-xs font-medium">Your topics</span>
+        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-[var(--color-primary-soft)] text-[var(--color-primary)] tabular-nums">
+          {topics.length}
+        </span>
+      </button>
     </div>
   );
 }

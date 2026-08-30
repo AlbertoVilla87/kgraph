@@ -35,7 +35,7 @@ export default function SharedInsights() {
             {sharedTopics.map((topic) => (
               <div
                 key={topic.name}
-                className="flex items-center justify-between p-3 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
+                className="flex items-center justify-between p-3 rounded-lg bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-3)] cursor-pointer transition-colors"
               >
                 <div>
                   <div className="text-sm font-medium">{topic.name}</div>
@@ -59,7 +59,7 @@ export default function SharedInsights() {
             {sharedRelationships.map((rel) => (
               <div
                 key={`${rel.source}-${rel.relation}-${rel.target}`}
-                className="p-3 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
+                className="p-3 rounded-lg bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-3)] cursor-pointer transition-colors"
               >
                 <div className="text-sm">
                   <span className="font-medium">{rel.source}</span>

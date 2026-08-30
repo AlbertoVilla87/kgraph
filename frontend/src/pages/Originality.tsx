@@ -45,21 +45,21 @@ export default function Originality() {
         <div className="flex gap-2 mb-4">
           <button
             onClick={() => setActiveTab('topics')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === 'topics'
-                ? 'bg-[var(--color-primary)] text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
+className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === 'topics'
+                  ? 'text-[#04201c] bg-[var(--color-primary)]'
+                  : 'bg-[var(--color-surface-2)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text)]'
+              }`}
           >
             Topics
           </button>
           <button
             onClick={() => setActiveTab('relationships')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === 'relationships'
-                ? 'bg-[var(--color-primary)] text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
+className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === 'relationships'
+                  ? 'text-[#04201c] bg-[var(--color-primary)]'
+                  : 'bg-[var(--color-surface-2)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text)]'
+              }`}
           >
             Relationships
           </button>
@@ -70,7 +70,7 @@ export default function Originality() {
             {uniqueTopics.map((topic) => (
               <div
                 key={topic.name}
-                className="flex items-center justify-between p-3 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer"
+                className="flex items-center justify-between p-3 rounded-lg bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-3)] cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 rounded-full bg-[var(--color-purple)]" />
@@ -100,7 +100,7 @@ export default function Originality() {
             {uniqueRelationships.map((rel) => (
               <div
                 key={`${rel.source}-${rel.relation}-${rel.target}`}
-                className="p-3 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer"
+className="p-3 rounded-lg bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-3)] cursor-pointer"
               >
                 <div className="text-sm">
                   <span className="font-medium">{rel.source}</span>
@@ -129,7 +129,7 @@ export default function Originality() {
           {researchGaps.map((gap) => (
             <div
               key={gap.name}
-              className="p-3 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer"
+              className="p-3 rounded-lg bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-3)] cursor-pointer"
             >
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">{gap.name}</span>
@@ -145,7 +145,7 @@ export default function Originality() {
                 {gap.relatedTopics.map((topic) => (
                   <span
                     key={topic}
-                    className="px-2 py-0.5 rounded-full text-[10px] bg-gray-200 text-gray-600"
+                    className="px-2 py-0.5 rounded-full text-[10px] bg-[var(--color-surface-3)] text-[var(--color-text-secondary)]"
                   >
                     {topic}
                   </span>
