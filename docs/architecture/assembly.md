@@ -87,3 +87,5 @@ result.discovery                # CitationDiscoveryResult for inspection
 | **refs-only** | Only in references | "T5" (background model) |
 
 This classification is a cheap originality proxy: if the seed-only class is empty, the paper may be more derivative than it sounds.
+
+> **Improved version (API pipeline).** `api/runner.py::_run_citation_pipeline` runs the same `CitationAssembly` but feeds it documents fetched **fast from ar5iv HTML** (seed and, in deep mode, each reference) with references resolved **in parallel**; GLiNER is shared from the process-wide model cache so it loads only once per process. See [Citation-guided discovery → improved version](discovery.md#improved-version--ar5iv-full-text--parallel-refs-api-pipeline).
