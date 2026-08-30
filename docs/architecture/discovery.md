@@ -280,3 +280,22 @@ uv run citation-demo --seed 2404.16130 --max-refs 10 --no-segmentation
 | `kgraph/discovery/citation_assembly.py` | Orchestrator: discovery → GLiNER → classification |
 | `kgraph/utils/stopwords.py` | Configurable stop word loader (spaCy-first) |
 | `kgraph/cli/citation_demo.py` | CLI entry point |
+
+### Improved version — ar5iv full text + parallel refs (API pipeline)
+
+The API's citation pipeline (`api/runner.py::_run_citation_pipeline`) is an improved, faster version of the same flow, used when the frontend runs citation-guided discovery:
+
+1. **Seed full text from ar5iv HTML** (`_fetch_arxiv_html`) — no PDF download, no docling. The seed needs its full text for the bibliography step.
+2. **Bibliography parsed from the ar5iv `section#bib` list** — items are `<li class="ltx_bibitem">` prefixed with `- ` for the existing parser.
+3. **References resolved in parallel** with a `ThreadPoolExecutor` (up to 8 workers), each fetching full text via ar5iv in **deep** mode or just the abstract in **quick** mode:
+
+   | Mode | Seed | References |
+   | --- | --- | --- |
+   | `quick` | full text (ar5iv) — needs it for the bibliography | abstracts only |
+   | `deep` | full text (ar5iv) | full text (ar5iv), parallel |
+
+4. The rest is unchanged: `CitationAssembly.run(seed_doc, ref_docs, bibliography=..., segmented=(mode == "deep"))` → Qwen taxonomy → per-doc GLiNER → classification.
+
+Because GLiNER is loaded **once** from a process-wide cache (`extractors/model_cache.py`) and shared across every document/segment, successive analyses skip the ~6 s reload.
+
+> The **parallelism here is per reference**: each `ThreadPoolExecutor` task resolves one reference's text, so refs are fetched concurrently regardless of mode. The GLiNER extraction (deep mode) is separately parallelized *per segment* — see [Segmentation](segmentation.md).

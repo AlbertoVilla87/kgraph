@@ -73,18 +73,23 @@ cd frontend && npm install && npm run dev
 Open `http://localhost:5173`. The frontend connects to the FastAPI backend at `localhost:8000`.
 
 Features:
-- **Overview** — paper input, stats, knowledge graph, shared vs unique insights
+- **Overview** — seed paper URL input (with citation-guided discovery), stats, knowledge graph, shared vs unique insights
 - **Graph Explorer** — interactive Cytoscape.js graph with node inspection
 - **Shared Insights** — concepts and relationships shared across documents
 - **Originality** — unique contributions and potential research gaps
 - **Research Gaps** — missing topics, missing relationships, underexplored combinations
-- **Topic Search** — custom topic explorer with found/partial/not_found status
 
 ## Pipeline
 
 **Sources (implemented: arXiv)**
 - **arXiv harvester** (`backend/src/kgraph/ingestion/arxiv.py`): topic query → `RawDocument`s with abstracts and metadata (title, authors, dates, `arxiv_id`, URLs), or full text via PDF download + docling parsing (`arxiv-demo --fulltext` writes `<arxiv_id>.md` per paper, re-feedable with `data_source.file_type: md`)
+- **arXiv full text via ar5iv HTML (fast path)**: the citation-guided pipeline fetches seed and reference full text from **ar5iv** as semantic HTML (`section#bib` for the bibliography, `li.ltx_bibitem` for refs) instead of PDF+docling — much faster and needs no docling models. References are resolved in parallel (up to 8 workers).
 - IEEE and similar sources plug in as extra `DataSource` implementations (planned)
+
+**Citation-guided discovery (seed → references → state of the art)**
+- `SeedPaperSource` + `ArxivReferenceExtractor` resolve the seed's references; Qwen (Ollama) reads each citing context and proposes concepts/types/relations, which become the GLiNER taxonomy
+- GLiNER is loaded **once** from a process-wide cache and shared across every document/segment (no reload between analyses)
+- Nodes are classified **core / seed-only / refs-only** as a cheap originality proxy
 
 **Concept (entity) extraction**
 - Adaptive KeyBERT → candidate topic seeds per document (adaptive count via score elbow)
@@ -123,11 +128,10 @@ Open `http://localhost:5173`.
 
 ## Status
 
-Implemented: the **arXiv harvester** (`arxiv-demo`, abstracts or full text), Adaptive KeyBERT seeding, LLM-free topic-guided discovery (spaCy), and the discovery-driven GLiNER assembly that builds the final knowledge graph. Current default corpus: `backend/data/case_2/medium.txt`.
+Implemented: the **arXiv harvester** (`arxiv-demo`, abstracts or full text), Adaptive KeyBERT seeding, LLM-free topic-guided discovery (spaCy), the discovery-driven GLiNER assembly that builds the final knowledge graph (with **section-aware segmentation** beating the 1024-token window), and the **citation-guided discovery** path (seed → references → Qwen taxonomy → GLiNER) exposed through the API. Full text for the citation path is fetched fast from **ar5iv HTML** with parallel reference resolution. Current default corpus: `backend/data/case_2/medium.txt`.
 
 Still open:
 - **Source feed**: IEEE (and similar) harvesters are not implemented; the pipeline can read a local folder (`data_source` in `params.yaml`) or fetch from arXiv (`data_source.type: arxiv`).
-- **GLiNER context truncation**: documents longer than ~1024 tokens are truncated. *Solved on `ft/segmentation`: the segmented extractor (`kgraph/segmentation/`) splits documents into section-aware, token-bounded segments with docling's `HierarchicalChunker`, runs GLiNER over all segments in parallel, and concatenates the results into one graph.*
 - **Accumulated graph**: nodes/edges accumulate per topic across documents; today each run builds a fresh graph from one corpus.
 - **Originality/gap signals**: the WL-kernel / embedding comparison against an accumulated topic graph, and the GLiNER zero-shot idea check, are designed but not yet implemented.
 - **Granularity**: too fine-grained and everything looks "new"; too coarse and nothing ever registers as novel. Will likely need iteration once there's real data flowing through.
