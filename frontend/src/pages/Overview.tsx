@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import KnowledgeGraph, { GraphNode, GraphEdge, NodeFilter } from '../components/KnowledgeGraph';
 import AnalysisProgress from '../components/AnalysisProgress';
+import ChunkViewer from '../components/ChunkViewer';
 
 const API_BASE = '/api';
 
@@ -61,6 +62,7 @@ export default function Overview() {
   const [userTopics, setUserTopics] = useState<UserTopic[]>(mockUserTopics);
   const [newTopic, setNewTopic] = useState('');
   const [graphFilter, setGraphFilter] = useState<NodeFilter>('all');
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
   const pollStatus = useCallback(async (analysisId: string) => {
     try {
@@ -92,6 +94,7 @@ export default function Overview() {
     if (!seedUrl.trim()) return;
     setError(null);
     setAnalysisResult(null);
+    setSelectedNode(null);
     setAnalyzing(true);
 
     try {
@@ -252,7 +255,7 @@ export default function Overview() {
         {/* graph or empty state */}
         {graphNodes.length > 0 ? (
           <div className="absolute inset-0">
-            <KnowledgeGraph nodes={graphNodes} edges={graphEdges} fill filter={graphFilter} />
+            <KnowledgeGraph nodes={graphNodes} edges={graphEdges} fill filter={graphFilter} onNodeClick={setSelectedNode} />
           </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -271,6 +274,17 @@ export default function Overview() {
               </p>
             </div>
           </div>
+        )}
+
+        {/* Node chunks overlay panel */}
+        {selectedNode && analysisResult && (
+          <ChunkViewer
+            nodeId={selectedNode.id}
+            nodeLabel={selectedNode.label || selectedNode.name || selectedNode.id}
+            chunksUrl={`${API_BASE}/graph/${analysisResult.id}/nodes/${selectedNode.id}/chunks`}
+            docTitles={Object.fromEntries(analysisResult.papers.map((p) => [p.id, p.title]))}
+            onClose={() => setSelectedNode(null)}
+          />
         )}
 
         {/* Floating: explore your own topics */}
