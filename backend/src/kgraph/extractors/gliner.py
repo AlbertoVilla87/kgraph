@@ -45,7 +45,12 @@ def _entities_from_raw(
 ) -> List[Entity]:
     entities = []
     for item in raw:
-        mention = {"doc_id": doc_id, "score": item["score"]}
+        mention = {
+            "doc_id": doc_id,
+            "score": item["score"],
+            "start": item.get("start", 0),
+            "end": item.get("end", 0),
+        }
         if segment_index is not None:
             mention["segment"] = segment_index
         entities.append(
