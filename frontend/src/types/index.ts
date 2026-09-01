@@ -51,3 +51,23 @@ export interface UserTopic {
   relatedTopics: string[];
   documents: string[];
 }
+
+export interface ChunkHighlight {
+  start: number;
+  end: number;
+  kind: 'node' | 'edge';
+  label: string;
+}
+
+export interface Chunk {
+  doc_id: string;
+  index: number;
+  text: string;
+  headings: string[];
+  highlights: ChunkHighlight[];
+}
+
+export interface ChunksResponse {
+  node_id: string;
+  chunks: Chunk[];
+}

@@ -493,6 +493,17 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
     kg = result.graph
     classifications = result.node_classifications
 
+    # Persist per-node chunk data for the lazy chunks endpoint.
+    from kgraph.api.chunks import build_node_mentions, build_segments
+    from kgraph.api.state import analysis_chunks
+    segmented = mode == "deep"
+    analysis_chunks[a["id"]] = {
+        "segments": build_segments(
+            [seed_doc] + list(ref_docs), config_path, segmented=segmented
+        ),
+        "node_mentions": build_node_mentions(kg.graph),
+    }
+
     connected_nodes = set()
     for u, v in kg.graph.edges():
         connected_nodes.add(u)
@@ -702,6 +713,15 @@ def _run_corpus_pipeline(a: dict, raw_docs: list, update, config_path: str, mode
     # Free heavy models (GLiNER, SentenceTransformer, spaCy) immediately
     del builder
     gc.collect()
+
+    # Persist per-node chunk data for the lazy chunks endpoint.
+    from kgraph.api.chunks import build_node_mentions, build_segments
+    from kgraph.api.state import analysis_chunks
+    segmented = mode == "deep"
+    analysis_chunks[a["id"]] = {
+        "segments": build_segments(raw_docs, config_path, segmented=segmented),
+        "node_mentions": build_node_mentions(graph),
+    }
 
     # Release torch threads and clear MPS/CUDA cache
     import torch
