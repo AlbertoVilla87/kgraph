@@ -1,6 +1,13 @@
 # Deployment (design phase)
 
-> **Status: design.** This page records the *proposed* target architecture for hosting Astrolabe on AWS. Nothing is deployed yet. The goal is to capture the decision space before committing to a setup.
+> **Status: design → provisioning.** This page records the *agreed* target
+> architecture for hosting Astrolabe on AWS. An account already exists (new AWS
+> experience, selected Region `eu-north-1`) and the first Terraform slice —
+> EC2 + wake Lambda + auto-stop scheduler + static site on S3/CloudFront — is
+> written on branch `ft/aws-deploy` (`infra/terraform/`), **validated but not
+> applied** (nothing billed yet). For the "on-demand" operating model (VM asleep
+> by default, woken on demand, auto-stop guard) plus the Terraform walkthrough,
+> see [AWS on-demand deployment](aws-ondemand.md).
 
 ## Target architecture
 
@@ -50,7 +57,9 @@ The application is a **single-instance, stateful ML workload**, not a stateless 
 
 > The diagram marks the instance as a **single point of failure** (deliberate):
 > one VM, no autoscaling — justified by the in-memory state + cold-start model
-> (see below). It is stopped/started manually to save cost (~$75/mo `t3.xlarge`).
+> (see below). To save cost it is kept **asleep unless used**: the on-demand
+> wake/auto-stop stack automates that (see [AWS on-demand deployment](aws-ondemand.md)),
+> versus the old ~$75/mo always-on `t3.xlarge`.
 
 ## Chosen approach: EC2 + Docker Compose
 

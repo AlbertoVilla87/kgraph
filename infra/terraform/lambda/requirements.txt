@@ -1,0 +1,2 @@
+# boto3 ya viene con el runtime de Lambda; se documenta por claridad.
+boto3>=1.34
