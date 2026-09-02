@@ -173,11 +173,11 @@ export default function Overview() {
           </div>
 
           <div className="seg">
-            <button data-active={discoveryMode === 'topic'} onClick={() => setDiscoveryMode('topic')} disabled={analyzing}>
-              Discovery · AutoDiscover
-            </button>
             <button data-active={discoveryMode === 'citation'} onClick={() => setDiscoveryMode('citation')} disabled={analyzing}>
               Discovery · Citation
+            </button>
+            <button data-active={discoveryMode === 'topic'} onClick={() => setDiscoveryMode('topic')} disabled>
+              Discovery · AutoDiscover
             </button>
           </div>
 
