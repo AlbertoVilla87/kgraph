@@ -1,8 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   GitBranch,
   ArrowRight,
-  BookOpen,
+  ArrowUpRight,
   Compass,
   Plus,
   X,
@@ -30,10 +30,17 @@ interface AnalysisStatus {
   error: string | null;
 }
 
+interface PaperInfo {
+  id: string;
+  title: string;
+  year?: number | null;
+  url?: string | null;
+}
+
 interface AnalysisResult {
   id: string;
   topic: string;
-  papers: { id: string; title: string }[];
+  papers: PaperInfo[];
   topics: GraphNode[];
   relationships: GraphEdge[];
   stats: Record<string, unknown>;
@@ -316,32 +323,14 @@ export default function Overview() {
             <CompactStat value={sharedTopics} label="shared topics" accent="var(--color-violet)" />
           </div>
 
-          {/* References list */}
+          {/* References timeline */}
           <div className="flex items-center justify-between mb-1.5">
             <h4 className="data-label">references analyzed</h4>
             <span className="text-[10px] font-mono text-[var(--color-text-faint)]">
               {analysisResult.papers.length} papers
             </span>
           </div>
-          <ul className="max-h-32 overflow-y-auto space-y-1 pr-1">
-            {analysisResult.papers.map((paper, i) => (
-              <li
-                key={paper.id}
-                className="group flex items-center gap-3 px-3 py-1.5 rounded-xl hover:bg-[var(--color-surface-3)] transition-colors"
-              >
-                <span className="text-[10px] font-mono text-[var(--color-text-faint)] w-5 text-right tabular-nums">
-                  {String(i + 1).padStart(2, '0')}
-                </span>
-                <span className="w-6 h-6 rounded-lg bg-[var(--color-surface-3)] flex items-center justify-center shrink-0">
-                  <BookOpen size={12} className="text-[var(--color-text-secondary)]" />
-                </span>
-                <span className="text-[13px] truncate">{paper.title}</span>
-                <span className="ml-auto text-[11px] font-mono text-[var(--color-text-faint)] shrink-0 hidden md:block">
-                  {paper.id}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <ReferenceTimeline papers={analysisResult.papers} />
         </section>
       )}
     </div>
@@ -370,6 +359,144 @@ function CompactStat({
         <div className="text-[10.5px] text-[var(--color-text-faint)] mt-1 truncate">{label}</div>
       </div>
     </div>
+  );
+}
+
+function ReferenceTimeline({ papers }: { papers: PaperInfo[] }) {
+  const byYear = useMemo(() => {
+    const map = new Map<number, PaperInfo[]>();
+    const undated: PaperInfo[] = [];
+    for (const paper of papers) {
+      if (paper.year != null) {
+        const list = map.get(paper.year) ?? [];
+        list.push(paper);
+        map.set(paper.year, list);
+      } else {
+        undated.push(paper);
+      }
+    }
+    return { years: [...map.keys()].sort((a, b) => a - b), map, undated };
+  }, [papers]);
+
+  return (
+    <div>
+      {/* Axis: one dot per year. Spacing is proportional to elapsed years,
+          so temporal distance is visible. Hover reveals that year's docs. */}
+      <div className="relative">
+        <div className="absolute top-[5px] left-0 right-0 h-px bg-[var(--color-line)]" />
+        <div className="flex items-end">
+          {byYear.years.map((year, i) => {
+            const gap = i + 1 < byYear.years.length ? byYear.years[i + 1]! - year : 1;
+            return (
+              <YearNode
+                key={year}
+                year={year}
+                papers={byYear.map.get(year) ?? []}
+                style={{ flexGrow: Math.max(1, gap), flexBasis: 0 }}
+              />
+            );
+          })}
+
+          {byYear.undated.length > 0 && (
+            <YearNode
+              key="undated"
+              year={null}
+              papers={byYear.undated}
+              style={{ flexGrow: 1, flexBasis: 0 }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function YearNode({
+  year,
+  papers,
+  style,
+}: {
+  year: number | null;
+  papers: PaperInfo[];
+  style?: React.CSSProperties;
+}) {
+  const [hover, setHover] = useState(false);
+  const count = papers.length;
+  const label = year ?? 'no date';
+  return (
+    <div className="relative flex justify-center" style={style}>
+      {/* Year node. The popover and the node share this wrapper so moving the
+          mouse from the dot into the floating list keeps it open. */}
+      <div
+        className="relative flex flex-col items-center cursor-help"
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+      >
+        {/* Floating popover with that year's papers */}
+        {hover && (
+          <div className="absolute bottom-[26px] left-1/2 -translate-x-1/2 w-64 glass-chip rounded-xl p-2 z-50 animate-pop">
+            <div
+              className={`text-[10px] font-mono mb-1.5 px-0.5 ${
+                year == null ? 'text-[var(--color-text-faint)]' : 'text-[var(--color-text-secondary)]'
+              }`}
+            >
+              {label} · {count} {count === 1 ? 'paper' : 'papers'}
+            </div>
+            <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pr-1">
+              {papers.map((paper) => (
+                <ReferenceChip key={paper.id} paper={paper} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Year node */}
+        <div
+          className={`w-3 h-3 rounded-full border-2 relative z-10 transition-colors ${
+            year == null
+              ? 'border-dashed border-[var(--color-line)] bg-[var(--color-surface-3)]'
+              : 'border-[var(--color-primary)] bg-[var(--color-primary-glow)]'
+          }`}
+        />
+        <span
+          className={`mt-1.5 text-[11px] font-mono ${
+            year == null ? 'text-[var(--color-text-faint)]' : 'text-[var(--color-text-secondary)]'
+          }`}
+        >
+          {label}
+        </span>
+        {count > 0 && (
+          <span className="mt-0.5 text-[9px] font-mono text-[var(--color-text-faint)] tabular-nums">
+            {count}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReferenceChip({ paper }: { paper: PaperInfo }) {
+  const content = (
+    <>
+      <span className="min-w-0 flex-1 truncate text-[12px]">{paper.title}</span>
+      <ArrowUpRight size={12} className="ml-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--color-primary)]" />
+    </>
+  );
+
+  const cls =
+    'group flex items-center gap-2 w-full h-8 px-2.5 rounded-lg glass-chip hover:border-[var(--color-primary-glow)] hover:text-[var(--color-text)] transition-colors text-left';
+
+  if (paper.url) {
+    return (
+      <a href={paper.url} target="_blank" rel="noopener noreferrer" title={paper.title} className={cls}>
+        {content}
+      </a>
+    );
+  }
+  return (
+    <span title={paper.title} className={cls + ' cursor-default'}>
+      {content}
+    </span>
   );
 }
 

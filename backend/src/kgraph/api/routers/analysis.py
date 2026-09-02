@@ -45,10 +45,17 @@ class RelationshipOut(BaseModel):
     documents: list[str]
 
 
+class PaperOut(BaseModel):
+    id: str
+    title: str
+    year: int | None = None
+    url: str | None = None
+
+
 class AnalysisResult(BaseModel):
     id: str
     topic: str
-    papers: list[dict]
+    papers: list[PaperOut]
     topics: list[TopicOut]
     relationships: list[RelationshipOut]
     stats: dict

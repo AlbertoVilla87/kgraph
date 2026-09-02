@@ -11,6 +11,27 @@ from kgraph.api.state import analyses
 log = logging.getLogger(__name__)
 
 
+def _paper_entry(doc_id: str, title: str, meta: dict | None = None) -> dict:
+    """Build a {id, title, year, url} entry for a paper in the result payload.
+
+    The year comes from arXiv's publication date (``published``) when
+    available, otherwise from metadata ``year``. The url is the direct PDF
+    link (``pdf_url``), falling back to the abstract page URL.
+    """
+    meta = meta or {}
+    year = None
+    published = meta.get("published")
+    if published:
+        try:
+            year = int(str(published)[:4])
+        except (TypeError, ValueError):
+            year = None
+    if year is None:
+        year = meta.get("year")
+    url = meta.get("pdf_url") or meta.get("url")
+    return {"id": doc_id, "title": title, "year": year, "url": url}
+
+
 def _advance_steps(a: dict, current_key: str, status: str = "running"):
     """Mark steps as done/running based on their order."""
     # The final "done" step always means the analysis completed
@@ -90,7 +111,7 @@ def _run_topic_pipeline(a: dict, topic: str, max_papers: int, update, config_pat
 
     a["papers_fetched"] = len(raw_docs)
     a["papers"] = [
-        {"id": doc.id, "title": doc.metadata.get("title", doc.id)}
+        _paper_entry(doc.id, doc.metadata.get("title", doc.id), doc.metadata)
         for doc in raw_docs
     ]
     update("fetch", 0.20, f"Found {len(raw_docs)} papers")
@@ -144,7 +165,7 @@ def _run_seed_pipeline(
 
     a["papers_fetched"] = len(raw_docs)
     a["papers"] = [
-        {"id": doc.id, "title": doc.metadata.get("title", doc.id)}
+        _paper_entry(doc.id, doc.metadata.get("title", doc.id), doc.metadata)
         for doc in raw_docs
     ]
 
@@ -368,10 +389,10 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
         id=SEED_DOC_ID,
         content=seed_body,
         source="arxiv_seed",
-        metadata={"title": seed_title},
+        metadata={"title": seed_title, **seed_results_raw[0].metadata},
     )
 
-    a["papers"] = [{"id": SEED_DOC_ID, "title": seed_title}]
+    a["papers"] = [_paper_entry(SEED_DOC_ID, seed_title, seed_results_raw[0].metadata)]
     update("fetch_seed", 0.15, f"Seed paper: {seed_title}")
 
     # 2. Parse bibliography
@@ -400,15 +421,16 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
         """Resolve a single reference. Returns RawDocument or None."""
         try:
             ref_source = ArxivSource(query=rid, max_results=1)
+            # Always fetch from arXiv to get metadata (published date, PDF url)
+            ref_fetched = ref_source.fetch()
+            ref_meta = ref_fetched[0].metadata if ref_fetched else {}
             if mode == "deep":
                 # Full text from ar5iv HTML (much faster than PDF+docling)
                 ref_body, _ = _fetch_arxiv_html(rid)
                 if not ref_body:
-                    ref_fetched = ref_source.fetch()
                     ref_body = ref_fetched[0].content if ref_fetched else ""
             else:
                 # Quick: abstracts only
-                ref_fetched = ref_source.fetch()
                 ref_body = ref_fetched[0].content if ref_fetched else ""
 
             entry = next(
@@ -424,6 +446,7 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
                 metadata={
                     "title": entry.title if entry else rid,
                     "year": entry.year if entry else None,
+                    **ref_meta,
                 },
             )
         except Exception as e:
@@ -455,8 +478,8 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
         return
 
     a["papers_fetched"] = 1 + len(ref_docs)
-    a["papers"] = [{"id": SEED_DOC_ID, "title": seed_title}] + [
-        {"id": d.id, "title": d.metadata.get("title", d.id)} for d in ref_docs
+    a["papers"] = [_paper_entry(SEED_DOC_ID, seed_title, seed_results_raw[0].metadata)] + [
+        _paper_entry(d.id, d.metadata.get("title", d.id), d.metadata) for d in ref_docs
     ]
     update("fetch_refs", 0.50, f"Resolved {len(ref_docs)} references")
 
