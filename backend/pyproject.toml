@@ -28,6 +28,7 @@ dependencies = [
     "streamlit>=1.59.2",
     "tqdm>=4.66",
     "uvicorn>=0.32.0",
+    "markdownify>=1.2.3",
 ]
 [project.scripts]
 gliner-demo = "kgraph.cli.gliner_graph_demo:main"

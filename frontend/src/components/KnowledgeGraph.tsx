@@ -31,6 +31,7 @@ interface KnowledgeGraphProps {
   height?: number;
   fill?: boolean;
   filter?: NodeFilter;
+  incremental?: boolean;
 }
 
 const DOC_COLORS = [
@@ -70,10 +71,19 @@ export default function KnowledgeGraph({
   height = 500,
   fill = false,
   filter = 'all',
+  incremental = false,
 }: KnowledgeGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const [cyReady, setCyReady] = useState(false);
+
+  // Keep latest props reachable from long-lived cytoscape event handlers.
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  const incrementalRef = useRef(incremental);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
+  incrementalRef.current = incremental;
 
   const docColorMap = useMemo(() => {
     const allDocIds = new Set<string>();
@@ -104,12 +114,30 @@ export default function KnowledgeGraph({
     return EDGE_COLOR;
   }, []);
 
+  // Always destroy the cytoscape instance on unmount.
   useEffect(() => {
-    if (!containerRef.current || nodes.length === 0) return;
+    return () => {
+      if (cyRef.current) {
+        cyRef.current.destroy();
+        cyRef.current = null;
+      }
+    };
+  }, []);
+
+  // Full (re)build: create the graph from scratch. Runs for the initial load
+  // and whenever the analysis completes (incremental=false), destroying any
+  // prior graph first. While incremental is active it early-returns (see the
+  // incremental effect below) so the accumulated graph is never torn down.
+  useEffect(() => {
+    if (!containerRef.current) return;
+    if (incrementalRef.current && cyRef.current) return;
 
     if (cyRef.current) {
       cyRef.current.destroy();
+      cyRef.current = null;
+      setCyReady(false);
     }
+    if (nodes.length === 0) return;
 
     const elements = [
       ...nodes.map((n) => {
@@ -248,17 +276,18 @@ export default function KnowledgeGraph({
       layout: {
         name: 'cose',
         idealEdgeLength: 120,
-        nodeOverlap: 30,
+        nodeOverlap: 180,
         refresh: 20,
         randomize: false,
-        componentSpacing: 60,
-        nodeRepulsion: 8000,
+        componentSpacing: 80,
+        nodeRepulsion: 12000,
         edgeElasticity: 100,
         nestingFactor: 1.2,
-        gravity: 0.25,
-        numIter: 1500,
+        gravity: 0.15,
+        numIter: 2000,
         animate: true,
         animationDuration: 600,
+        nodeDimensionsIncludeLabels: true,
       },
       minZoom: 0.3,
       maxZoom: 3,
@@ -267,26 +296,102 @@ export default function KnowledgeGraph({
 
     if (onNodeClick) {
       cy.on('tap', 'node', (evt: EventObject) => {
-        const node = nodes.find((n) => n.id === evt.target.id());
+        const node = nodesRef.current.find((n) => n.id === evt.target.id());
         if (node) onNodeClick(node);
       });
     }
 
     if (onEdgeClick) {
       cy.on('tap', 'edge', (evt: EventObject) => {
-        const edge = edges.find((e) => e.id === evt.target.id());
+        const edge = edgesRef.current.find((e) => e.id === evt.target.id());
         if (edge) onEdgeClick(edge);
       });
     }
 
     cyRef.current = cy;
     setCyReady(true);
+  }, [nodes, edges, incremental, onNodeClick, onEdgeClick, docColorMap, orphanIds, getNodeColor, getEdgeColor]);
 
-    return () => {
-      setCyReady(false);
-      cy.destroy();
-    };
-  }, [nodes, edges, onNodeClick, onEdgeClick, docColorMap, orphanIds, getNodeColor, getEdgeColor]);
+  // Incremental: merge newly discovered nodes/edges into the live graph.
+  // Runs while the analysis is in progress; existing element positions are
+  // preserved, only the freshly added batch gets a light layout pass.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!incrementalRef.current || !cy) return;
+
+    const existingNodes = new Set(cy.nodes().map((n) => n.id()));
+    const existingEdges = new Set(cy.edges().map((e) => e.id()));
+    const newNodes = nodes.filter((n) => !existingNodes.has(n.id));
+    const newEdges = edges.filter((e) => !existingEdges.has(e.id));
+    if (newNodes.length === 0 && newEdges.length === 0) return;
+
+    const newElements = [
+      ...newNodes.map((n) => ({
+        data: {
+          id: n.id,
+          label: n.label || n.name || n.id,
+          source: n.source,
+          importance: n.importance,
+          type: n.type,
+          docColor: getNodeColor(n),
+          isOrphan: orphanIds.has(n.id),
+          docCount: (n.documents || []).length,
+        },
+      })),
+      ...newEdges.map((e) => ({
+        data: {
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          relation: e.relation,
+          confidence: e.confidence,
+          docCount: (e.documents || []).length,
+          edgeColor: getEdgeColor(e),
+        },
+      })),
+    ];
+
+    const added = cy.add(newElements);
+
+    // Disperse the new nodes relative to their existing neighbours. Laying out
+    // only the freshly added batch in isolation makes nodes pile up on top of
+    // the already-placed graph, so we run cose over the batch plus its
+    // connected neighbourhood so each new node gets separation from the
+    // existing nodes it links to.
+    if (added.nodes().length > 0) {
+      let affected = added;
+      added.nodes().forEach((n) => {
+        affected = affected.union(n.neighborhood().nodes());
+      });
+      const ilayout = affected.layout({
+        name: 'cose',
+        idealEdgeLength: 130,
+        nodeOverlap: 260,
+        refresh: 20,
+        randomize: false,
+        componentSpacing: 100,
+        nodeRepulsion: 25000,
+        edgeElasticity: 100,
+        nestingFactor: 1.2,
+        gravity: 0.12,
+        numIter: 400,
+        animate: true,
+        animationDuration: 500,
+        nodeDimensionsIncludeLabels: true,
+      });
+      ilayout.run();
+    }
+
+    // Re-apply the active filter so newly added elements obey it too.
+    if (filter !== 'all') {
+      added.nodes().forEach((node) => {
+        const matches = filter === node.data('source');
+        nodetoggleClass(node, 'filtered-out', !matches);
+      });
+    }
+
+    setCyReady(true);
+  }, [nodes, edges, filter, orphanIds, getNodeColor, getEdgeColor]);
 
   // Apply filter
   useEffect(() => {

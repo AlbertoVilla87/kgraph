@@ -32,6 +32,121 @@ def _paper_entry(doc_id: str, title: str, meta: dict | None = None) -> dict:
     return {"id": doc_id, "title": title, "year": year, "url": url}
 
 
+def _wrap_math(soup) -> None:
+    """Replace ar5iv math elements with ``$``-delimited LaTeX in-place.
+
+    Display equations (``ltx_equationgroup`` / ``ltx_equation`` containers)
+    become ``$$...$$`` blocks; inline math (``<math class="ltx_Math">`` or a
+    ``<span class="ltx_Math">`` in prose) becomes ``$...$``. LaTeX is taken
+    from ar5iv's ``alttext`` / ``x-tex`` annotation when present, so KaTeX can
+    render it. Runs before markdown conversion.
+
+    This is intentionally O(#math) — a single ``find_all`` plus ``find_parent``
+    per element — because the naive per-element ``get_text`` walks the whole
+    tree and is grotesquely slow on large ar5iv pages.
+    """
+    import re as _re
+
+    def _tex(el) -> str:
+        alt = el.get("alttext")
+        if alt and alt.strip():
+            return _re.sub(r"^\\displaystyle\s*", "", alt.strip())
+        else:
+            ann = el.find("annotation", encoding="application/x-tex")
+            if ann is not None and (ann.text or "").strip():
+                return _re.sub(r"^\\displaystyle\s*", "", ann.text.strip())
+        return _re.sub(r"\s+", " ", el.get_text(" ", strip=True)).strip()
+
+    def _is_display(el) -> bool:
+        cls = el.get("class") or []
+        return any("ltx_equationgroup" in c or "ltx_equation" in c for c in cls)
+
+    display_groups: dict[id, list[str]] = {}
+    display_els: set = set()
+
+    # Single pass over inline/display <math> elements.
+    for el in soup.find_all("math", class_="ltx_Math"):
+        tex = _tex(el)
+        if not tex:
+            continue
+        disp = el.find_parent(_is_display)
+        if disp is not None:
+            # Promote to the topmost display container so we replace the whole
+            # block (including any equation-number tag) in one go.
+            while True:
+                parent = disp.find_parent(_is_display)
+                if parent is None:
+                    break
+                disp = parent
+            display_groups.setdefault(id(disp), []).append(tex)
+            display_els.add(disp)
+        else:
+            el.string = f" ${tex}$ "
+
+    for d in display_els:
+        d.string = "\n\n$$ " + "  ".join(display_groups[id(d)]) + " $$\n\n"
+
+    # Fallback for legacy inline math wrapped directly in a <span class="ltx_Math">
+    # that does not contain its own <math> element.
+    for el in soup.find_all("span", class_="ltx_Math"):
+        if el.find("math") is not None:
+            continue
+        tex = _tex(el)
+        if tex:
+            el.string = f" ${tex}$ "
+
+
+def _to_markdown(html: str) -> str:
+    """Convert an HTML fragment to markdown via markdownify."""
+    from markdownify import markdownify
+    return markdownify(html, heading_style="ATX")
+
+
+def _graph_to_api(kg, classifications: dict, include_orphans: bool = False) -> tuple[list, list]:
+    """Convert a GLiNERGraph + classifications into API node/edge payloads.
+
+    Orphan nodes (no incident edges) are included only when ``include_orphans``
+    is True — used for progressive partial snapshots where edges may not yet
+    have been merged.
+    """
+    if include_orphans:
+        connected_nodes = set(kg.graph.nodes())
+    else:
+        connected_nodes = set()
+        for u, v in kg.graph.edges():
+            connected_nodes.add(u)
+            connected_nodes.add(v)
+
+    nodes = []
+    for nid, data in kg.graph.nodes(data=True):
+        if nid not in connected_nodes:
+            continue
+        node_docs = list({m["doc_id"] for m in data.get("mentions", [])})
+        classification = classifications.get(nid, "unknown")
+        nodes.append({
+            "id": nid,
+            "name": data.get("text", nid),
+            "type": data.get("entity_type", "concept"),
+            "importance": round(data.get("score", 0.5) * 10, 1),
+            "source": classification,
+            "documents": node_docs,
+        })
+
+    edges = []
+    for u, v, key, data in kg.graph.edges(keys=True, data=True):
+        edge_docs = list(data.get("docs", set()))
+        edges.append({
+            "id": f"{u}_{v}_{key}",
+            "source": u,
+            "target": v,
+            "relation": data.get("relation_type", "related to"),
+            "confidence": round(data.get("score", 0.5), 2),
+            "documents": edge_docs,
+        })
+
+    return nodes, edges
+
+
 def _advance_steps(a: dict, current_key: str, status: str = "running"):
     """Mark steps as done/running based on their order."""
     # The final "done" step always means the analysis completed
@@ -306,9 +421,12 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
     )
 
     def _fetch_arxiv_html(arxiv_id: str) -> tuple[str, str]:
-        """Fetch paper from ar5iv HTML. Returns (body_text, references_text).
+        """Fetch paper from ar5iv HTML. Returns (body_markdown, references_text).
 
-        Uses the semantic HTML structure instead of regex on plain text.
+        The body is converted to markdown so that ar5iv's structured tables and
+        math survive (instead of being flattened to plain text), and real ``#``
+        headings are produced — which the downstream ``Segmenter`` already
+        expects to split on.
         """
         from bs4 import BeautifulSoup
 
@@ -318,21 +436,26 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
                 resp = _http.get(url)
                 resp.raise_for_status()
                 soup = BeautifulSoup(resp.text, "html.parser")
+                _wrap_math(soup)
 
-                # Extract body text (everything before the bibliography section)
+                # Extract body (everything before the bibliography section) as markdown.
                 bib_section = soup.find("section", id="bib")
-                body_text = ""
                 if bib_section:
-                    # Get all sections before bibliography
-                    for el in bib_section.previous_siblings:
-                        if hasattr(el, "get_text"):
-                            body_text = el.get_text(separator="\n", strip=True) + "\n" + body_text
+                    body_els = [
+                        el for el in bib_section.previous_siblings if hasattr(el, "get_text")
+                    ]
+                    body_md = "\n\n".join(
+                        _to_markdown(str(el)) for el in reversed(body_els)
+                    )
                 else:
                     # Fallback: use article or body
                     article = soup.find("article") or soup.find("body") or soup
-                    body_text = article.get_text(separator="\n", strip=True)
+                    body_md = _to_markdown(str(article))
 
-                # Extract references as structured text from <li> items
+                # Extract references as structured text from <li> items.
+                # Kept as flat get_text() (NOT markdown) because the runner
+                # prefixes each line with "- " and feeds it to
+                # parse_bibliography_entries, which expects one entry per line.
                 refs_text = ""
                 if bib_section:
                     bib_list = bib_section.find("ul", class_="ltx_biblist")
@@ -343,7 +466,7 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
                         refs_text = "\n".join(ref_items)
 
                 max_chars = 24_000
-                return body_text[:max_chars], refs_text
+                return body_md[:max_chars], refs_text
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429:
                     import time
@@ -496,12 +619,18 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
     segmented = mode == "deep"
     update("extract", 0.60, "Running citation-guided discovery + GLiNER extraction...")
     assembly = CitationAssembly(config_path)
+
+    def _on_gen_graph_progress(graph, classifications):
+        partial_nodes, partial_edges = _graph_to_api(graph, classifications, include_orphans=True)
+        a["partial_graph"] = {"topics": partial_nodes, "relationships": partial_edges}
+
     try:
         result = assembly.run(
             seed_doc,
             ref_docs,
             bibliography=bibliography,
             segmented=segmented,
+            on_progress=_on_gen_graph_progress,
         )
     except Exception as e:
         log.error("CitationAssembly failed: %s", e, exc_info=True)
@@ -527,37 +656,7 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
         "node_mentions": build_node_mentions(kg.graph),
     }
 
-    connected_nodes = set()
-    for u, v in kg.graph.edges():
-        connected_nodes.add(u)
-        connected_nodes.add(v)
-
-    nodes = []
-    for nid, data in kg.graph.nodes(data=True):
-        if nid not in connected_nodes:
-            continue
-        node_docs = list({m["doc_id"] for m in data.get("mentions", [])})
-        classification = classifications.get(nid, "unknown")
-        nodes.append({
-            "id": nid,
-            "name": data.get("text", nid),
-            "type": data.get("entity_type", "concept"),
-            "importance": round(data.get("score", 0.5) * 10, 1),
-            "source": classification,
-            "documents": node_docs,
-        })
-
-    edges = []
-    for u, v, key, data in kg.graph.edges(keys=True, data=True):
-        edge_docs = list(data.get("docs", set()))
-        edges.append({
-            "id": f"{u}_{v}_{key}",
-            "source": u,
-            "target": v,
-            "relation": data.get("relation_type", "related to"),
-            "confidence": round(data.get("score", 0.5), 2),
-            "documents": edge_docs,
-        })
+    nodes, edges = _graph_to_api(kg, classifications)
 
     # Summary stats
     stats = {
