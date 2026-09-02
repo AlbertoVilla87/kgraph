@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   GitBranch,
   ArrowRight,
@@ -7,11 +7,13 @@ import {
   Plus,
   X,
 } from 'lucide-react';
-import KnowledgeGraph, { GraphNode, GraphEdge, NodeFilter } from '../components/KnowledgeGraph';
+import KnowledgeGraph, { GraphNode, GraphEdge } from '../components/KnowledgeGraph';
 import AnalysisProgress from '../components/AnalysisProgress';
 import ChunkViewer from '../components/ChunkViewer';
 
 const API_BASE = '/api';
+
+const STORAGE_KEY = 'astrolabe_last_analysis';
 
 interface Step {
   key: string;
@@ -28,6 +30,7 @@ interface AnalysisStatus {
   detail: string;
   steps: Step[];
   error: string | null;
+  partial_graph?: { topics: GraphNode[]; relationships: GraphEdge[] } | null;
 }
 
 interface PaperInfo {
@@ -59,16 +62,29 @@ const mockUserTopics: UserTopic[] = [
 ];
 
 export default function Overview() {
+  // Restore the last completed analysis from localStorage so refreshing the
+  // page (or re-mounting the app) doesn't wipe the graph.
+  const loadStoredResult = (): AnalysisResult | null => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as AnalysisResult;
+      if (!parsed || !parsed.topics || !parsed.relationships) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
   const [depthMode, setDepthMode] = useState<'quick' | 'deep'>('quick');
   const [discoveryMode, setDiscoveryMode] = useState<'topic' | 'citation'>('citation');
   const [seedUrl, setSeedUrl] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(() => loadStoredResult());
   const [error, setError] = useState<string | null>(null);
   const [userTopics, setUserTopics] = useState<UserTopic[]>(mockUserTopics);
   const [newTopic, setNewTopic] = useState('');
-  const [graphFilter, setGraphFilter] = useState<NodeFilter>('all');
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
   const pollStatus = useCallback(async (analysisId: string) => {
@@ -101,6 +117,7 @@ export default function Overview() {
     if (!seedUrl.trim()) return;
     setError(null);
     setAnalysisResult(null);
+    setAnalysisStatus(null);
     setSelectedNode(null);
     setAnalyzing(true);
 
@@ -138,8 +155,19 @@ export default function Overview() {
     setUserTopics(userTopics.filter((t) => t.id !== id));
   };
 
-  const graphNodes: GraphNode[] = analysisResult?.topics ?? [];
-  const graphEdges: GraphEdge[] = analysisResult?.relationships ?? [];
+  // Persist the completed analysis so a page reload / re-mount of the app
+  // doesn't lose the graph (the backend keeps state in memory only).
+  useEffect(() => {
+    if (analysisResult) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(analysisResult));
+      } catch {
+        // ignore quota / private-mode failures
+      }
+    }
+  }, [analysisResult]);
+
+  const graphNodes: GraphNode[] = analysisResult?.topics ?? analysisStatus?.partial_graph?.topics ?? [];  const graphEdges: GraphEdge[] = analysisResult?.relationships ?? analysisStatus?.partial_graph?.relationships ?? [];
   const sharedTopics = graphNodes.filter((n) => (n.documents?.length ?? 0) > 1).length;
 
   return (
@@ -229,40 +257,16 @@ export default function Overview() {
           </span>
         </div>
 
-        {/* filter chips */}
-        {analysisResult && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 glass-chip rounded-xl px-2 py-1.5 z-10 flex gap-1">
-            {(['all', 'main', 'reference', 'shared'] as NodeFilter[]).map((f) => {
-              const labels: Record<NodeFilter, string> = {
-                all: 'All',
-                main: 'Seed',
-                reference: 'Refs',
-                shared: 'Shared',
-                core: 'Core',
-                'seed-only': 'Seed only',
-                'refs-only': 'Refs only',
-              };
-              return (
-                <button
-                  key={f}
-                  onClick={() => setGraphFilter(f)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
-                    graphFilter === f
-                      ? 'text-[#04201c] bg-[var(--color-primary)]'
-                      : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-3)]'
-                  }`}
-                >
-                  {labels[f]}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
         {/* graph or empty state */}
         {graphNodes.length > 0 ? (
           <div className="absolute inset-0">
-            <KnowledgeGraph nodes={graphNodes} edges={graphEdges} fill filter={graphFilter} onNodeClick={setSelectedNode} />
+            <KnowledgeGraph
+              nodes={graphNodes}
+              edges={graphEdges}
+              fill
+              onNodeClick={setSelectedNode}
+              incremental={analyzing && !analysisResult && !!analysisStatus?.partial_graph}
+            />
           </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">

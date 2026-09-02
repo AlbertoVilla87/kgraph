@@ -9,7 +9,7 @@ Orchestrates the full citation-guided pipeline:
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Set, Tuple
+from typing import Callable, Dict, List, Set, Tuple
 
 from dataclasses import dataclass, field
 
@@ -63,6 +63,7 @@ class CitationAssembly:
         bibliography: List[BibliographyEntry] | None = None,
         *,
         segmented: bool | None = None,
+        on_progress: Callable[[GLiNERGraph, Dict[str, str]], None] | None = None,
     ) -> CitationGraphResult:
         """Run the full citation-guided pipeline.
 
@@ -71,6 +72,10 @@ class CitationAssembly:
             ref_docs: Resolved reference documents.
             bibliography: Parsed bibliography entries. If None, parsed from seed_doc.
             segmented: Override segmentation config. None = use config default.
+            on_progress: Optional callback invoked periodically with a snapshot of
+                the partial ``GLiNERGraph`` and its live node classifications
+                (computed from the mentions accumulated so far). Used for
+                progressive rendering while extraction runs.
 
         Returns:
             CitationGraphResult with the classified graph.
@@ -119,9 +124,16 @@ class CitationAssembly:
         log.info("Running GLiNER extraction (segmented=%s)...", use_segmentation)
         log.info("GLiNER model path: %s", final_config.ner.name)
         all_docs = self._all_docs(seed_doc, ref_docs)
+
+        def _report(graph: GLiNERGraph) -> None:
+            if on_progress is None:
+                return
+            on_progress(graph, self._classify_nodes(graph, result))
+
         if use_segmentation:
             kg = SegmentedGraphExtractor(final_config).build(
-                self._build_docs_with_labels(seed_doc, ref_docs, result)
+                self._build_docs_with_labels(seed_doc, ref_docs, result),
+                on_progress=_report,
             )
         else:
             from tqdm import tqdm
@@ -139,6 +151,7 @@ class CitationAssembly:
                     kg.add_entity(e)
                 for r in rels:
                     kg.add_relation(r)
+                _report(kg)
 
         # 4. Classify nodes
         classifications = self._classify_nodes(kg, result)

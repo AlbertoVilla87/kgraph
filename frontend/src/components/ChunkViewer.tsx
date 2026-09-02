@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import 'katex/dist/katex.min.css';
 import type { Chunk, ChunkHighlight } from '../types';
 
-const NODE_COLOR = '#f5b759'; // amber — the selected node
-const EDGE_COLOR = '#35d6c1'; // teal — connected edges
+const NODE_CLASS = 'kg-node';
+const EDGE_CLASS = 'kg-edge';
 
 interface ChunkViewerProps {
   nodeId: string;
@@ -17,19 +23,6 @@ interface HighlightInterval {
   start: number;
   end: number;
   kind: 'node' | 'edge';
-  label: string;
-}
-
-function clipIntervals(
-  intervals: HighlightInterval[],
-  limit: number,
-): HighlightInterval[] {
-  const out: HighlightInterval[] = [];
-  for (const iv of intervals) {
-    if (iv.start >= limit) continue;
-    out.push({ ...iv, end: Math.min(iv.end, limit) });
-  }
-  return out;
 }
 
 function shortDoc(docId: string, docTitles?: Record<string, string>): string {
@@ -39,13 +32,44 @@ function shortDoc(docId: string, docTitles?: Record<string, string>): string {
   return clean.length > 16 ? `${clean.slice(0, 16)}…` : clean;
 }
 
+// Inject balanced <mark> tags into the markdown string at the highlight offsets.
+// Node highlights take priority over edge highlights when they overlap.
+function withHighlights(text: string, intervals: HighlightInterval[]): string {
+  if (!intervals.length) return text;
+  const markByIndex = new Map<number, 'node' | 'edge'>();
+  for (const iv of intervals) {
+    const start = Math.max(0, iv.start);
+    const end = Math.min(text.length, iv.end);
+    for (let i = start; i < end; i++) {
+      const cur = markByIndex.get(i);
+      if (cur === 'node') continue;
+      if (iv.kind === 'node') markByIndex.set(i, 'node');
+      else if (!cur) markByIndex.set(i, 'edge');
+    }
+  }
+  let out = '';
+  let active: 'node' | 'edge' | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const k: 'node' | 'edge' | null = markByIndex.get(i) ?? null;
+    if (k !== active) {
+      if (active === 'node') out += '</mark>';
+      else if (active === 'edge') out += '</mark>';
+      if (k === 'node') out += `<mark class="${NODE_CLASS}">`;
+      else if (k === 'edge') out += `<mark class="${EDGE_CLASS}">`;
+      active = k;
+    }
+    out += text[i];
+  }
+  if (active === 'node') out += '</mark>';
+  else if (active === 'edge') out += '</mark>';
+  return out;
+}
+
 export default function ChunkViewer({ nodeId, nodeLabel, chunksUrl, docTitles, onClose }: ChunkViewerProps) {
   const [chunks, setChunks] = useState<Chunk[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState(0);
-  const [revealed, setRevealed] = useState(0);
-  const rafRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -54,7 +78,7 @@ export default function ChunkViewer({ nodeId, nodeLabel, chunksUrl, docTitles, o
     setError(null);
     setChunks(null);
     setActive(0);
-    setRevealed(0);
+
     fetch(chunksUrl)
       .then((r) => {
         if (!r.ok) throw new Error('Failed to load chunks');
@@ -76,73 +100,19 @@ export default function ChunkViewer({ nodeId, nodeLabel, chunksUrl, docTitles, o
   }, [chunksUrl]);
 
   const chunk = chunks?.[active] ?? null;
-  const textLen = chunk?.text.length ?? 0;
-
-  // Typewriter reveal for the active chunk.
-  useEffect(() => {
-    setRevealed(0);
-    if (!chunk || textLen === 0) return;
-    const start = performance.now();
-    const duration = Math.min(textLen * 6, 2500); // ~6ms/char, capped
-    const step = (now: number) => {
-      const t = Math.min((now - start) / duration, 1);
-      setRevealed(Math.floor(t * textLen));
-      if (t < 1) rafRef.current = requestAnimationFrame(step);
-      else rafRef.current = null;
-    };
-    rafRef.current = requestAnimationFrame(step);
-    return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    };
-  }, [chunk, textLen]);
-
-  // Keep the newly revealed text in view as the typewriter plays.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [revealed, active]);
-
   const intervals = useMemo<HighlightInterval[]>(() => {
     if (!chunk) return [];
     return (chunk.highlights || []).map((h: ChunkHighlight) => ({
       start: h.start,
       end: h.end,
       kind: h.kind,
-      label: h.label,
     }));
   }, [chunk]);
 
-  const shown = useMemo<{ before: string; parts: { text: string; kind: 'node' | 'edge' | 'plain' }[] }>(() => {
-    if (!chunk) return { before: '', parts: [] };
-    const visible = chunk.text.slice(0, revealed);
-    const clipped = clipIntervals(intervals, revealed);
-    // Walk visible text, grouping runs by whether they fall inside any interval.
-    const parts: { text: string; kind: 'node' | 'edge' | 'plain' }[] = [];
-    let buf = '';
-    let bufKind: 'node' | 'edge' | 'plain' = 'plain';
-
-    for (let i = 0; i < visible.length; i++) {
-      let kind: 'node' | 'edge' | 'plain' = 'plain';
-      for (const iv of clipped) {
-        if (i >= iv.start && i < iv.end) {
-          kind = iv.kind;
-          break;
-        }
-      }
-      if (kind !== bufKind) {
-        if (buf) parts.push({ text: buf, kind: bufKind });
-        buf = '';
-        bufKind = kind;
-      }
-      buf += visible[i];
-    }
-    if (buf) parts.push({ text: buf, kind: bufKind });
-
-    const before = chunk.text.slice(revealed);
-    return { before, parts };
-  }, [chunk, revealed, intervals]);
+  const markdown = useMemo(() => {
+    if (!chunk) return '';
+    return withHighlights(chunk.text, intervals);
+  }, [chunk, intervals]);
 
   if (loading) {
     return (
@@ -180,7 +150,7 @@ export default function ChunkViewer({ nodeId, nodeLabel, chunksUrl, docTitles, o
   };
 
   return (
-    <div className="absolute left-3 top-12 z-20 w-[360px] glass rounded-2xl p-4 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.9)] flex flex-col gap-3 animate-rise">
+    <div className="absolute left-3 top-12 z-20 w-[720px] glass rounded-2xl p-4 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.9)] flex flex-col gap-3 animate-rise">
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -238,34 +208,26 @@ export default function ChunkViewer({ nodeId, nodeLabel, chunksUrl, docTitles, o
       {/* Highlights legend */}
       <div className="flex items-center gap-3 text-[10px] text-[var(--color-text-secondary)]">
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm border" style={{ background: 'rgba(245,183,89,0.35)', borderColor: NODE_COLOR }} />
+          <span className="w-3 h-3 rounded-sm border kg-node" />
           {legend.node}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm border" style={{ background: 'rgba(53,214,193,0.3)', borderColor: EDGE_COLOR }} />
+          <span className="w-3 h-3 rounded-sm border kg-edge" />
           {legend.edge}
         </span>
       </div>
 
-      {/* Chunk text — scrollable */}
+      {/* Chunk content — markdown with tables & math — scrollable */}
       <div
         ref={scrollRef}
-        className="max-h-[260px] overflow-y-auto pr-1 text-[13px] leading-relaxed text-[var(--color-text-secondary)]"
+        className="kg-markdown max-h-[260px] overflow-y-auto pr-1 text-[13px] leading-relaxed text-[var(--color-text-secondary)]"
       >
-        {shown.parts.map((p, i) =>
-          p.kind === 'node' ? (
-            <mark key={i} className="rounded px-0.5" style={{ background: 'rgba(245,183,89,0.35)', color: '#fff', textDecoration: `underline 2px ${NODE_COLOR}` }}>
-              {p.text}
-            </mark>
-          ) : p.kind === 'edge' ? (
-            <mark key={i} className="rounded px-0.5" style={{ background: 'rgba(53,214,193,0.3)', color: '#fff', textDecoration: `underline 2px ${EDGE_COLOR}` }}>
-              {p.text}
-            </mark>
-          ) : (
-            <span key={i}>{p.text}</span>
-          ),
-        )}
-        <span className="opacity-40">{shown.before}</span>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeRaw, rehypeKatex]}
+        >
+          {markdown}
+        </ReactMarkdown>
       </div>
     </div>
   );

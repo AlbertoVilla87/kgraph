@@ -18,8 +18,9 @@ pinned to a single torch thread when more than one worker is used.
 
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 
 import torch
 
@@ -50,8 +51,21 @@ class SegmentedGraphExtractor:
         self.segmenter = Segmenter(config.ner.name, config.segmentation)
         self.workers = config.segmentation.workers or _default_workers()
 
-    def build(self, documents: List[RawDocument]) -> GLiNERGraph:
-        """Segment the documents, extract per segment and concatenate the graph."""
+    def build(
+        self,
+        documents: List[RawDocument],
+        on_progress: Callable[[GLiNERGraph], None] | None = None,
+        progress_interval: float = 1.5,
+    ) -> GLiNERGraph:
+        """Segment the documents, extract per segment and concatenate the graph.
+
+        Args:
+            documents: Documents to process.
+            on_progress: Optional callback invoked periodically (throttled to
+                ``progress_interval`` seconds) with the partial ``GLiNERGraph``
+                accumulated so far. Allows live progressive rendering.
+            progress_interval: Minimum seconds between ``on_progress`` calls.
+        """
         from tqdm import tqdm
 
         graph = GLiNERGraph(self.config, model=self.model)
@@ -65,9 +79,21 @@ class SegmentedGraphExtractor:
 
         log.info("Processing %d segments across %d documents", len(segments), len(documents))
 
+        last_progress = time.monotonic()
+
+        def _maybe_progress() -> None:
+            if on_progress is None:
+                return
+            nonlocal last_progress
+            now = time.monotonic()
+            if now - last_progress >= progress_interval:
+                last_progress = now
+                on_progress(graph)
+
         if len(segments) <= 1 or self.workers <= 1:
             for segment in tqdm(segments, desc="GLiNER segments", unit="seg", leave=False):
                 self._merge(graph, self._extract(segment))
+                _maybe_progress()
             return graph
 
         self._limit_torch_threads()
@@ -77,6 +103,7 @@ class SegmentedGraphExtractor:
             for future in as_completed(futures):
                 self._merge(graph, future.result())
                 pbar.update(1)
+                _maybe_progress()
         pbar.close()
         return graph
 

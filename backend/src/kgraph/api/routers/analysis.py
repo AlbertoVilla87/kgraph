@@ -25,6 +25,7 @@ class AnalysisStatus(BaseModel):
     detail: str = ""
     steps: list[dict] = []
     error: str | None = None
+    partial_graph: dict | None = None
 
 
 class TopicOut(BaseModel):
