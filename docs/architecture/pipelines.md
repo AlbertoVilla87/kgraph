@@ -1,12 +1,13 @@
 # Build, deploy & AWS account bootstrap
 
-> **Status: implementation done, ready to run.** The account exists (new AWS
-> experience, selected Region **`eu-north-1`**, profile `default`), the first
-> Terraform slice (EC2 + wake Lambda + auto-stop scheduler + static S3/CloudFront
-> site) is written (`infra/terraform/`) and the container/pipeline files are now
-> implemented in this repo — Dockerfiles, `docker-compose.yml`, `.env.example`,
-> GitHub Actions workflows, `ec2-provision.sh`. What remains is **execution**:
-> apply Terraform, create ECR repos / OIDC roles, first release.
+> **Status: implementation merged (PR #45), execution pending.** The account
+> exists (new AWS experience, selected Region **`eu-north-1`**, profile `default`),
+> the Terraform slice (EC2 + wake Lambda + auto-stop scheduler + static
+> S3/CloudFront site) is written (`infra/terraform/`) and the container/pipeline
+> files are implemented and merged — Dockerfiles, `docker-compose.yml`,
+> `.env.example`, GitHub Actions workflows, `ec2-provision.sh`. What remains is
+> **execution**: apply Terraform, create ECR repos / OIDC roles, ECR login on the
+> EC2, first release.
 > Decisions locked in: **OIDC** auth from CI, **models baked into the image**
 > (no spaCy), **SSM Run Command** to deploy, **manual/`workflow_dispatch`** deploy
 > trigger, **git tag → build** trigger, **Terraform** to provision the EC2.
@@ -223,6 +224,25 @@ jobs:
 > (GLiNER ~2.5 GB, MiniLM ~90 MB). Expect the build to take several minutes and
 > the resulting image to be large — use `docker buildx` cache (as above) to
 > speed up rebuilds.
+
+## Execution steps (what remains)
+
+All code is merged; these are the remaining **one-time operational actions** to
+go live. Each maps to a section of the [Deployment Runbook](deployment.md):
+
+1. **Apply Terraform** (Runbook §1) — creates the EC2, wake Lambda, auto-stop
+   scheduler, S3/CloudFront site and IAM roles. Outputs: instance id, public IP,
+   wake URL.
+2. **Create ECR repos** (Runbook §3) — `kgraph/backend` + `kgraph/frontend`.
+3. **Create OIDC provider + CI roles** — GitHub Actions assumes these via OIDC
+   (no static creds); still to add to `infra/terraform/` (marked ⬜ in Stage 2).
+4. **Set GitHub secrets/vars** (Runbook §3) — `AWS_ACCOUNT_ID`, `EC2_INSTANCE_ID`,
+   `EC2_PUBLIC_IP`.
+5. **Provision the EC2** (Runbook §2) — run `ec2-provision.sh` (clone repo,
+   create `.env`, `docker compose up`).
+6. **ECR login on the EC2** — instance profile needs `AmazonEC2ContainerRegistryReadOnly`
+   so `docker compose pull` can fetch the private images.
+7. **First release** (below) — tag `v0.1.0`, then deploy.
 
 ## First release (runbook)
 

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- :package: Docker deployment toolchain: backend/frontend Dockerfiles (ML models baked, spaCy excluded), `docker-compose.yml`, nginx server config
+- :package: CI/CD via GitHub Actions — `build.yml` (tag → ECR push) and `deploy.yml` (manual → SSM compose up)
+- :package: One-time EC2 bootstrap script (`scripts/ec2-provision.sh`)
+- :package: Operational deployment runbook (`docs/architecture/deployment.md`)
 - :sparkles: Citation-guided discovery: seed paper's citations define the GLiNER taxonomy (exp_04)
 - :sparkles: Entity classification: core / seed-only / refs-only originality proxy
 - :sparkles: Per-document GLiNER labels via citation context analysis
