@@ -119,12 +119,12 @@ Key facts:
 
 ---
 
-## 3. Pipeline dispatch (mode × discovery)
+## 3. Pipeline dispatch (discovery)
 
 `run_analysis` branches on two axes: whether a `seed_url` or a `topic` was
 provided, and whether discovery is `topic` (KeyBERT + spaCy, LLM-free) or
-`citation` (seed's bibliography → Qwen3 taxonomy). `mode` is `quick`
-(abstracts only) or `deep` (full text + segmentation).
+`citation` (seed's bibliography → Qwen3 taxonomy). Every pipeline is "deep":
+it parses full text and segments documents before extraction.
 
 ```mermaid
 flowchart TB
@@ -133,19 +133,15 @@ flowchart TB
     B -- "yes" --> C{discovery}
     B -- "no (topic)" --> T["_run_topic_pipeline<br/>ArxivSource search + abstracts"]
 
-    C -- "topic" --> S["_run_seed_pipeline<br/>seed PDF + references (quick: abstracts)"]
+    C -- "topic" --> S["_run_seed_pipeline<br/>seed PDF + references (full text)"]
     C -- "citation" --> CIT["_run_citation_pipeline<br/>ar5iv full text + bibliography"]
 
     T --> CORP
     S --> CORP
     CIT --> RA["CitationAssembly.run<br/>ensure_ollama → Qwen3 taxonomy"]
 
-    CORP["_run_corpus_pipeline"]
-    CORP -- "quick" --> Q["_quick_extract<br/>abstracts, no segmentation"]
-    CORP -- "deep" --> DP["parse → segment → extract"]
-
-    Q --> MERGE["merge → /result"]
-    DP --> MERGE
+    CORP["_run_corpus_pipeline<br/>parse → segment → extract"]
+    CORP --> MERGE["merge → /result"]
     RA --> MERGE
 ```
 
@@ -213,8 +209,8 @@ the CLI corpus demo (`backend/reports/corpus_timing_2d91bd8.json`, deep mode,
 | extraction | 187.4 s |
 | **total** | **≈ 4.3 min** |
 
-`quick` mode (abstracts only) is far smaller but still on the order of tens of
-seconds. Either way a synchronous HTTP response is not viable — the job +
+The full-text + segmentation pipeline runs to completion in about 4.3 min, so
+a synchronous HTTP response is not viable — the job +
 polling pattern is the right call, and `proxy_read_timeout` / LLM timeouts are
 already sized for it (litellm `timeout=120` at `citation_graph.py:230`; httpx
 read timeout 60 s in the citation fetcher).
