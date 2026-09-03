@@ -4,8 +4,8 @@ After a graph is assembled, the runner delegates here to build two artifacts
 stored per ``analysis_id`` in ``kgraph.api.state``:
 
 - ``segments``:  ``doc_id -> [chunk]`` where each chunk is the exact text that
-  GLiNER scored (including its heading prefix). Segmentation is applied in
-  ``deep`` mode; in ``quick`` mode every document becomes a single chunk.
+  GLiNER scored (including its heading prefix), produced by the section-aware
+  ``Segmenter``.
 - ``node_mentions``:  ``node_id -> [mention]`` with the ``doc_id``, ``segment``
   index and character ``start``/``end`` offsets (relative to the chunk text)
   of each occurrence of that node, plus its ``kind``.
@@ -24,35 +24,18 @@ from kgraph.segmentation.chunker import Segmenter
 NODE_KIND = "node"
 
 
-def _single_chunk(doc: RawDocument) -> dict:
-    return {
-        "doc_id": doc.id,
-        "index": 0,
-        "text": doc.content or "",
-        "headings": [],
-    }
-
-
 def build_segments(
     documents: List[RawDocument],
     config_path: str,
-    *,
-    segmented: bool,
 ) -> Dict[str, List[dict]]:
     """Return ``doc_id -> [chunk dict]`` for the given documents.
 
-    Uses the section-aware ``Segmenter`` when ``segmented`` is true, otherwise
-    treats each document's full text as a single chunk.
+    Uses the section-aware ``Segmenter``; any document that fails to segment
+    (or yields no chunks) falls back to a single whole-document chunk.
     """
-    segments: Dict[str, List[dict]] = {}
-
-    if not segmented:
-        for doc in documents:
-            segments[doc.id] = [_single_chunk(doc)]
-        return segments
-
     cfg = load_pipeline_config(config_path)
     segmenter = Segmenter(cfg.ner.name, cfg.segmentation)
+    segments: Dict[str, List[dict]] = {}
     for doc in documents:
         chunks = []
         try:
@@ -69,7 +52,14 @@ def build_segments(
                 }
             )
         if not chunks:
-            chunks = [_single_chunk(doc)]
+            chunks = [
+                {
+                    "doc_id": doc.id,
+                    "index": 0,
+                    "text": doc.content or "",
+                    "headings": [],
+                }
+            ]
         segments[doc.id] = chunks
     return segments
 

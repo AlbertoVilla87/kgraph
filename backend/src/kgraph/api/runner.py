@@ -174,12 +174,11 @@ def run_analysis(analysis_id: str):
     topic = a.get("topic", "")
     max_papers = a.get("max_papers", 2)
     max_references = a.get("max_references", 15)
-    mode = a.get("mode", "quick")
     discovery = a.get("discovery", "topic")
     config_path = str(Path(__file__).resolve().parents[3] / "configs" / "params.yaml")
 
-    log.info("Starting analysis %s (seed=%s, topic=%s, mode=%s, discovery=%s)",
-             analysis_id, seed_url or "-", topic or "-", mode, discovery)
+    log.info("Starting analysis %s (seed=%s, topic=%s, discovery=%s)",
+             analysis_id, seed_url or "-", topic or "-", discovery)
 
     def update(step_key: str, progress: float, detail: str = ""):
         a["current_step"] = step_key
@@ -190,15 +189,15 @@ def run_analysis(analysis_id: str):
     try:
         if seed_url:
             if discovery == "citation":
-                _run_citation_pipeline(a, seed_url, max_references, update, config_path, mode)
+                _run_citation_pipeline(a, seed_url, max_references, update, config_path)
             else:
-                _run_seed_pipeline(a, seed_url, max_references, update, config_path, mode)
+                _run_seed_pipeline(a, seed_url, max_references, update, config_path)
         else:
             if discovery == "citation":
                 a["status"] = "error"
                 a["error"] = "Citation discovery requires a seed paper (seed_url), not a topic query"
                 return
-            _run_topic_pipeline(a, topic, max_papers, update, config_path, mode)
+            _run_topic_pipeline(a, topic, max_papers, update, config_path)
 
         log.info("Analysis %s completed successfully", analysis_id)
 
@@ -211,7 +210,7 @@ def run_analysis(analysis_id: str):
         gc.collect()
 
 
-def _run_topic_pipeline(a: dict, topic: str, max_papers: int, update, config_path: str, mode: str = "quick"):
+def _run_topic_pipeline(a: dict, topic: str, max_papers: int, update, config_path: str):
     """Topic-based pipeline: search a data source by query."""
     from kgraph.ingestion.arxiv import ArxivSource
 
@@ -232,11 +231,11 @@ def _run_topic_pipeline(a: dict, topic: str, max_papers: int, update, config_pat
     update("fetch", 0.20, f"Found {len(raw_docs)} papers")
     time.sleep(0.2)
 
-    _run_corpus_pipeline(a, raw_docs, update, config_path, mode)
+    _run_corpus_pipeline(a, raw_docs, update, config_path)
 
 
 def _run_seed_pipeline(
-    a: dict, seed_url: str, max_references: int, update, config_path: str, mode: str = "quick"
+    a: dict, seed_url: str, max_references: int, update, config_path: str
 ):
     """Seed paper pipeline: download seed, extract references, download them."""
     from kgraph.ingestion.seed_paper import SeedPaperSource, _parse_arxiv_id
@@ -257,18 +256,14 @@ def _run_seed_pipeline(
         max_references=max_references,
     )
 
-    # Quick mode: fetch abstracts only (no PDF download)
-    if mode == "quick":
-        raw_docs = _fetch_abstracts_only(source, seed_id, max_references, update)
-    else:
-        # Deep mode: download PDFs and parse with Docling
-        def on_seed_progress(current: int, total: int, detail: str):
-            if total > 0:
-                progress = 0.10 + (current / total) * 0.20
-            else:
-                progress = 0.10
-            update("fetch_refs", progress, detail)
-        raw_docs = source.fetch(on_progress=on_seed_progress)
+    # Deep mode: download PDFs and parse with Docling
+    def on_seed_progress(current: int, total: int, detail: str):
+        if total > 0:
+            progress = 0.10 + (current / total) * 0.20
+        else:
+            progress = 0.10
+        update("fetch_refs", progress, detail)
+    raw_docs = source.fetch(on_progress=on_seed_progress)
 
     if not raw_docs:
         a["status"] = "error"
@@ -284,90 +279,10 @@ def _run_seed_pipeline(
         for doc in raw_docs
     ]
 
-    _run_corpus_pipeline(a, raw_docs, update, config_path, mode)
+    _run_corpus_pipeline(a, raw_docs, update, config_path)
 
 
-def _fetch_abstracts_only(source, seed_id: str, max_references: int, update) -> list:
-    """Quick mode: download seed PDF for refs, then fetch referenced abstracts only."""
-    from kgraph.ingestion.arxiv import ArxivSource
-    from kgraph.ingestion.references import ArxivReferenceExtractor
-    from kgraph.ingestion.parsers.parsers import parse_pdf_full
-    import urllib.request
-    from pathlib import Path
-
-    # Step 1: Download seed PDF and parse it (needed for reference extraction)
-    update("fetch_seed", 0.05, f"Downloading seed PDF: {seed_id}")
-    source.source.max_results = 1
-    source.source.query = seed_id
-    seed_results = list(source.source.client.results(
-        __import__('arxiv').Search(query=seed_id, max_results=1)
-    ))
-    if not seed_results:
-        return []
-
-    seed_result = seed_results[0]
-    pdf_url = seed_result.pdf_url
-    if not pdf_url:
-        return []
-
-    # Download seed PDF
-    download_dir = Path("data/papers")
-    download_dir.mkdir(parents=True, exist_ok=True)
-    safe_id = seed_id.replace("/", "_")
-    pdf_path = download_dir / f"{safe_id}.pdf"
-
-    if not pdf_path.exists():
-        req = urllib.request.Request(pdf_url, headers={"User-Agent": "kgraph/0.1"})
-        with urllib.request.urlopen(req) as resp, open(pdf_path, "wb") as f:
-            f.write(resp.read())
-
-    # Parse seed PDF to get full text for reference extraction
-    update("references", 0.10, "Parsing seed PDF for references...")
-    try:
-        docling_doc, seed_text = parse_pdf_full(pdf_path)
-    except Exception as e:
-        log.warning("Failed to parse seed PDF: %s", e)
-        # Fallback: use abstract
-        seed_text = seed_result.summary or ""
-
-    # Build seed doc with full text (for reference extraction)
-    from kgraph.graph.models import RawDocument
-    seed_doc = RawDocument(
-        id=f"arxiv:{seed_result.get_short_id()}",
-        content=seed_text,
-        source="arxiv_seed",
-        metadata=ArxivSource.metadata(seed_result),
-        docling_doc=docling_doc if 'docling_doc' in dir() else None,
-    )
-
-    # Step 2: Extract references from the parsed PDF
-    extractor = ArxivReferenceExtractor()
-    extracted = extractor.extract(seed_text, max_refs=max_references)
-    ref_ids = [ref.source_id for ref in extracted]
-    update("references", 0.15, f"Found {len(ref_ids)} references")
-
-    if not ref_ids:
-        return [seed_doc]
-
-    # Step 3: Fetch referenced abstracts only (no PDF download)
-    ref_docs = []
-    total = len(ref_ids)
-    for i, rid in enumerate(ref_ids, 1):
-        update("fetch_refs", 0.15 + (i / total) * 0.15, f"Fetching abstract {i}/{total}: {rid}")
-        try:
-            source.source.query = rid
-            source.source.max_results = 1
-            results = source.source.fetch()
-            if results:
-                ref_docs.append(results[0])
-        except Exception as e:
-            log.warning("Failed to fetch abstract %s: %s", rid, e)
-            continue
-
-    return [seed_doc] + ref_docs
-
-
-def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, config_path: str, mode: str = "quick"):
+def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, config_path: str):
     """Citation-guided pipeline; always shuts down Ollama when finished.
 
     Ollama is a local server kept only for the duration of an analysis: killing
@@ -375,7 +290,7 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
     when kgraph started it itself (see citation_graph.shutdown_ollama).
     """
     try:
-        _run_citation_pipeline_impl(a, seed_url, max_references, update, config_path, mode)
+        _run_citation_pipeline_impl(a, seed_url, max_references, update, config_path)
     finally:
         from kgraph.discovery.citation_graph import shutdown_ollama
         shutdown_ollama()
@@ -391,11 +306,11 @@ def _run_citation_pipeline(a: dict, seed_url: str, max_references: int, update, 
             torch.cuda.empty_cache()
 
 
-def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, update, config_path: str, mode: str = "quick"):
+def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, update, config_path: str):
     """Citation-guided pipeline: seed citations define the GLiNER taxonomy.
 
-    quick: seed gets full text (for bibliography), refs get abstracts only
-    deep: seed + refs get full text, segmentation enabled
+    The seed and its references all get full text (via ar5iv HTML) and
+    segmentation is enabled.
     """
     import re
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -538,7 +453,7 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
     ref_ids = ref_ids[:max_references]
     update("bibliography", 0.25, f"Found {len(bibliography)} entries, resolving {len(ref_ids)}")
 
-    # 3. Resolve references (quick: abstracts only; deep: full text via ar5iv)
+    # 3. Resolve references (full text via ar5iv)
 
     def _resolve_one_ref(rid: str):
         """Resolve a single reference. Returns RawDocument or None."""
@@ -547,13 +462,9 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
             # Always fetch from arXiv to get metadata (published date, PDF url)
             ref_fetched = ref_source.fetch()
             ref_meta = ref_fetched[0].metadata if ref_fetched else {}
-            if mode == "deep":
-                # Full text from ar5iv HTML (much faster than PDF+docling)
-                ref_body, _ = _fetch_arxiv_html(rid)
-                if not ref_body:
-                    ref_body = ref_fetched[0].content if ref_fetched else ""
-            else:
-                # Quick: abstracts only
+            # Full text from ar5iv HTML (much faster than PDF+docling)
+            ref_body, _ = _fetch_arxiv_html(rid)
+            if not ref_body:
                 ref_body = ref_fetched[0].content if ref_fetched else ""
 
             entry = next(
@@ -616,7 +527,6 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
         a["error"] = f"Ollama not available: {e}. Start with: ollama serve"
         return
 
-    segmented = mode == "deep"
     update("extract", 0.60, "Running citation-guided discovery + GLiNER extraction...")
     assembly = CitationAssembly(config_path)
 
@@ -629,7 +539,7 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
             seed_doc,
             ref_docs,
             bibliography=bibliography,
-            segmented=segmented,
+            segmented=True,
             on_progress=_on_gen_graph_progress,
         )
     except Exception as e:
@@ -648,10 +558,9 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
     # Persist per-node chunk data for the lazy chunks endpoint.
     from kgraph.api.chunks import build_node_mentions, build_segments
     from kgraph.api.state import analysis_chunks
-    segmented = mode == "deep"
     analysis_chunks[a["id"]] = {
         "segments": build_segments(
-            [seed_doc] + list(ref_docs), config_path, segmented=segmented
+            [seed_doc] + list(ref_docs), config_path
         ),
         "node_mentions": build_node_mentions(kg.graph),
     }
@@ -688,149 +597,22 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
         pass
 
 
-def _quick_extract(builder, raw_docs: list):
-    """Quick mode: run GLiNER on abstract text directly (no segmentation)."""
-    import networkx as nx
-    from kgraph.extractors.gliner import extract_entities_relations
-    from kgraph.extractors.normalization import canonical, EntityMerger
-    from kgraph.corpus.merge import summarize_corpus
-
-    # Build taxonomy per doc
-    taxonomies = {}
-    for doc in raw_docs:
-        taxonomies[doc.id] = builder._taxonomy(doc)
-
-    # Extract entities/relations from each abstract directly (no segments)
-    per_doc = {}
-    for doc in raw_docs:
-        entity_labels, relation_labels = taxonomies[doc.id]
-        # Apply label filter
-        builder.label_filter.fit(entity_labels, relation_labels)
-        ent_labels, rel_labels = builder.label_filter.filter(
-            doc.content or "", min_labels=5, max_labels=10
-        )
-        entities, relations = extract_entities_relations(
-            builder.model,
-            doc.content or "",
-            ent_labels,
-            rel_labels,
-            builder.base_config.thresholds.entity,
-            builder.base_config.thresholds.relation,
-            doc_id=doc.id,
-        )
-        per_doc.setdefault(doc.id, ([], []))[0].extend(entities)
-        per_doc[doc.id][1].extend(relations)
-
-    per_document = [
-        (doc_id, entities, relations)
-        for doc_id, (entities, relations) in per_doc.items()
-    ]
-
-    # Use merge with EntityMerger for near-duplicate detection
-    graph = nx.MultiDiGraph()
-    text_to_id = {}
-    edge_lookup = {}
-    merger = EntityMerger()
-
-    def _register_node(node_id: str, entity, doc_id: str) -> None:
-        """Register a node and all its aliases in text_to_id."""
-        key = canonical(entity.text)
-        text_to_id[key] = node_id
-        # Also register the EntityMerger's canonical so future matches resolve
-        match = merger.match(key)
-        if match is not None and match != key:
-            text_to_id[match] = node_id
-        node = graph.nodes[node_id]
-        node["mentions"].extend(entity.mentions)
-        node["docs"].add(doc_id)
-        if entity.score > node["score"]:
-            node["score"] = entity.score
-
-    for doc_id, entities, relations in per_document:
-        for entity in entities:
-            key = canonical(entity.text)
-            node_id = text_to_id.get(key)
-            if node_id is None:
-                match = merger.match(key)
-                if match is not None:
-                    node_id = text_to_id.get(match)
-            if node_id is None:
-                node_id = entity.id
-                graph.add_node(
-                    node_id,
-                    text=entity.text,
-                    entity_type=entity.entity_type,
-                    score=entity.score,
-                    mentions=[],
-                    docs=set(),
-                )
-            _register_node(node_id, entity, doc_id)
-
-        for relation in relations:
-            head_key = canonical(relation.head_text)
-            head_id = text_to_id.get(head_key)
-            if head_id is None:
-                match = merger.match(head_key)
-                if match is not None:
-                    head_id = text_to_id.get(match)
-                    if head_id is not None:
-                        text_to_id[head_key] = head_id
-            tail_key = canonical(relation.tail_text)
-            tail_id = text_to_id.get(tail_key)
-            if tail_id is None:
-                match = merger.match(tail_key)
-                if match is not None:
-                    tail_id = text_to_id.get(match)
-                    if tail_id is not None:
-                        text_to_id[tail_key] = tail_id
-            if head_id is None or tail_id is None:
-                continue
-            key = (head_id, tail_id, relation.relation_type)
-            edge_key = edge_lookup.get(key)
-            if edge_key is None:
-                edge_key = graph.add_edge(
-                    head_id,
-                    tail_id,
-                    relation_type=relation.relation_type,
-                    score=relation.score,
-                    count=0,
-                    docs=set(),
-                )
-                edge_lookup[key] = edge_key
-            edge = graph.edges[head_id, tail_id, edge_key]
-            edge["count"] += 1
-            edge["docs"].add(doc_id)
-            if relation.score > edge["score"]:
-                edge["score"] = relation.score
-
-    summary = summarize_corpus(graph, [doc.id for doc in raw_docs])
-    return graph, summary
-
-
-def _run_corpus_pipeline(a: dict, raw_docs: list, update, config_path: str, mode: str = "quick"):
-    """Shared corpus pipeline. Quick mode skips PDF parsing and segmentation."""
+def _run_corpus_pipeline(a: dict, raw_docs: list, update, config_path: str):
+    """Shared corpus pipeline: full-text parsing and segmentation."""
     from kgraph.corpus import CorpusGraphBuilder
 
     n = len(raw_docs)
 
-    if mode == "quick":
-        update("taxonomy", 0.40, "Building topic taxonomy...")
-        time.sleep(0.1)
-    else:
-        update("parse", 0.35, f"Parsing {n} documents...")
-        time.sleep(0.2)
-        update("taxonomy", 0.40, "Building topic taxonomy per document...")
-        time.sleep(0.2)
-        update("segment", 0.45, "Segmenting documents for extraction...")
+    update("taxonomy", 0.40, "Building topic taxonomy...")
+    time.sleep(0.1)
+    update("parse", 0.35, f"Parsing {n} documents...")
+    time.sleep(0.2)
+    update("segment", 0.45, "Segmenting documents for extraction...")
 
     builder = CorpusGraphBuilder(config_path, workers=0)
 
-    if mode == "quick":
-        update("extract", 0.50, f"Extracting entities from {n} abstracts...")
-        graph, summary = _quick_extract(builder, raw_docs)
-    else:
-        update("extract", 0.50, f"Extracting entities from {n} documents...")
-        graph, summary = builder.build(raw_docs)
+    update("extract", 0.50, f"Extracting entities from {n} documents...")
+    graph, summary = builder.build(raw_docs)
 
     # Free heavy models (GLiNER, SentenceTransformer, spaCy) immediately
     del builder
@@ -839,9 +621,8 @@ def _run_corpus_pipeline(a: dict, raw_docs: list, update, config_path: str, mode
     # Persist per-node chunk data for the lazy chunks endpoint.
     from kgraph.api.chunks import build_node_mentions, build_segments
     from kgraph.api.state import analysis_chunks
-    segmented = mode == "deep"
     analysis_chunks[a["id"]] = {
-        "segments": build_segments(raw_docs, config_path, segmented=segmented),
+        "segments": build_segments(raw_docs, config_path),
         "node_mentions": build_node_mentions(graph),
     }
 

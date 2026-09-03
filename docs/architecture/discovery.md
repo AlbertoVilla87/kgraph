@@ -287,15 +287,10 @@ The API's citation pipeline (`api/runner.py::_run_citation_pipeline`) is an impr
 
 1. **Seed full text from ar5iv HTML** (`_fetch_arxiv_html`) — no PDF download, no docling. The seed needs its full text for the bibliography step.
 2. **Bibliography parsed from the ar5iv `section#bib` list** — items are `<li class="ltx_bibitem">` prefixed with `- ` for the existing parser.
-3. **References resolved in parallel** with a `ThreadPoolExecutor` (up to 8 workers), each fetching full text via ar5iv in **deep** mode or just the abstract in **quick** mode:
+3. **References resolved in parallel** with a `ThreadPoolExecutor` (up to 8 workers), each fetching full text via ar5iv:
 
-   | Mode | Seed | References |
-   | --- | --- | --- |
-   | `quick` | full text (ar5iv) — needs it for the bibliography | abstracts only |
-   | `deep` | full text (ar5iv) | full text (ar5iv), parallel |
-
-4. The rest is unchanged: `CitationAssembly.run(seed_doc, ref_docs, bibliography=..., segmented=(mode == "deep"))` → Qwen taxonomy → per-doc GLiNER → classification.
+4. The rest is unchanged: `CitationAssembly.run(seed_doc, ref_docs, bibliography=..., segmented=True)` → Qwen taxonomy → per-doc GLiNER → classification.
 
 Because GLiNER is loaded **once** from a process-wide cache (`extractors/model_cache.py`) and shared across every document/segment, successive analyses skip the ~6 s reload.
 
-> The **parallelism here is per reference**: each `ThreadPoolExecutor` task resolves one reference's text, so refs are fetched concurrently regardless of mode. The GLiNER extraction (deep mode) is separately parallelized *per segment* — see [Segmentation](segmentation.md).
+> The **parallelism here is per reference**: each `ThreadPoolExecutor` task resolves one reference's text, so refs are fetched concurrently. The GLiNER extraction is separately parallelized *per segment* — see [Segmentation](segmentation.md).

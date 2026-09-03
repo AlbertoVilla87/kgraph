@@ -40,7 +40,6 @@ segmented-demo = "kgraph.cli.segmented_demo:main"
 graph-viz = "kgraph.cli.graph_viz:main"
 arxiv-demo = "kgraph.cli.arxiv_demo:main"
 corpus-demo = "kgraph.cli.corpus_demo:main"
-debug-abstract = "kgraph.cli.debug_abstract:main"
 citation-demo = "kgraph.cli.citation_demo:main"
 serve = "kgraph.api.main:app"
 [build-system]

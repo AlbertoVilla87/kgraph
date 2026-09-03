@@ -58,7 +58,7 @@ line item that moves the needle. Approximate on-demand prices in eu-north-1:
 
 Two levers dominate:
 
-1. **Right-size per scenario.** `t3.large` covers `quick` mode (abstracts only);
+1. **Right-size per scenario.** `t3.large` handles moderate workloads;
    `t3.xlarge` is needed for `deep` + citation + Ollama. The Terraform exposes
    `instance_type` so you switch with one `apply`.
 2. **Duty cycle.** A VM that is off 95% of the time costs ~5% of its always-on

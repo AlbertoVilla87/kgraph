@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Removed
+
+- :wastebasket: Drop the "quick"/abstracts-only pipeline mode — backend and frontend now keep only the "deep" (full-text + PDF, segmented) path
+- :wastebasket: Remove the `debug-abstract` CLI script and its entry point
+
 ## [1.1.0] - 2026-08-18
 
 ### Added

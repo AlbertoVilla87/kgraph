@@ -12,7 +12,6 @@ class AnalyzeRequest(BaseModel):
     max_papers: int = 2
     seed_url: str | None = None
     max_references: int = 15
-    mode: str = "quick"  # "quick" (abstracts) or "deep" (full text + PDF)
     discovery: str = "topic"  # "topic" (KeyBERT+spaCy) or "citation" (Qwen)
 
 
@@ -77,7 +76,7 @@ def start_analysis(req: AnalyzeRequest):
     steps = []
     if is_seed:
         steps = [
-            {"key": "fetch_seed", "label": "Downloading seed paper" if req.mode == "deep" else "Fetching seed paper", "status": "pending"},
+            {"key": "fetch_seed", "label": "Downloading seed paper", "status": "pending"},
         ]
         if req.discovery == "citation":
             steps += [
@@ -88,25 +87,21 @@ def start_analysis(req: AnalyzeRequest):
                 {"key": "references", "label": "Extracting references", "status": "pending"},
             ]
         steps += [
-            {"key": "fetch_refs", "label": "Downloading referenced papers" if req.mode == "deep" else "Fetching referenced abstracts", "status": "pending"},
+            {"key": "fetch_refs", "label": "Downloading referenced papers", "status": "pending"},
         ]
     if req.discovery == "citation":
         steps += [
             {"key": "ollama", "label": "Extracting concepts with Qwen", "status": "pending"},
         ]
-    if req.mode == "deep":
-        steps += [
-            {"key": "parse", "label": "Parsing documents", "status": "pending"},
-        ]
+    steps += [
+        {"key": "parse", "label": "Parsing documents", "status": "pending"},
+    ]
     if req.discovery == "topic":
         steps += [
             {"key": "taxonomy", "label": "Building topic taxonomy", "status": "pending"},
         ]
-    if req.mode == "deep":
-        steps += [
-            {"key": "segment", "label": "Segmenting documents", "status": "pending"},
-        ]
     steps += [
+        {"key": "segment", "label": "Segmenting documents", "status": "pending"},
         {"key": "extract", "label": "Extracting entities and relationships", "status": "pending"},
         {"key": "merge", "label": "Merging cross-document graph", "status": "pending"},
         {"key": "done", "label": "Analysis complete", "status": "pending"},
@@ -119,7 +114,6 @@ def start_analysis(req: AnalyzeRequest):
         "seed_url": req.seed_url,
         "max_papers": req.max_papers,
         "max_references": req.max_references,
-        "mode": req.mode,
         "discovery": req.discovery,
         "progress": 0.0,
         "current_step": "",

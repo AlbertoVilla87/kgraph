@@ -116,7 +116,6 @@ export default function Overview() {
     }
   };
 
-  const [depthMode, setDepthMode] = useState<'quick' | 'deep'>('quick');
   const [discoveryMode, setDiscoveryMode] = useState<'topic' | 'citation'>('citation');
   const [seedUrl, setSeedUrl] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -178,7 +177,7 @@ export default function Overview() {
     setAnalyzing(true);
 
     try {
-      const body = { seed_url: seedUrl.trim(), max_references: 15, mode: depthMode, discovery: discoveryMode };
+      const body = { seed_url: seedUrl.trim(), max_references: 15, discovery: discoveryMode };
 
       const res = await fetch(`${API_BASE}/analysis/analyze`, {
         method: 'POST',
@@ -377,15 +376,6 @@ export default function Overview() {
           </div>
 
           <div className="seg">
-            <button data-active={depthMode === 'quick'} onClick={() => setDepthMode('quick')} disabled={analyzing}>
-              Quick ~30s
-            </button>
-            <button data-active={depthMode === 'deep'} onClick={() => setDepthMode('deep')} disabled={analyzing}>
-              Deep ~5min
-            </button>
-          </div>
-
-          <div className="seg">
             <button data-active={discoveryMode === 'citation'} onClick={() => setDiscoveryMode('citation')} disabled={analyzing}>
               Discovery · Citation
             </button>
@@ -413,7 +403,7 @@ export default function Overview() {
           </button>
         </div>
         <p className="text-[11px] text-[var(--color-text-faint)] mt-2 font-mono">
-          {depthMode === 'quick' ? '~30s · abstracts only' : '~5min · full text + PDF'}
+          ~5min · full text + PDF
           <span className="mx-2 text-[var(--color-line)]">|</span>
           {discoveryMode === 'topic' ? 'AutoDiscovers topic taxonomy from the abstract' : 'Reads citing contexts from reference papers'}
           <span className="mx-2 text-[var(--color-line)]">|</span>
