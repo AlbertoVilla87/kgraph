@@ -28,3 +28,8 @@ node_modules/
 *.tfstate.*
 *.tfvars.auto
 infra/terraform/lambda/_wake.zip
+
+# Environment
+.env
+.env.*
+!.env.example
