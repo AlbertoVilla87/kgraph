@@ -2,10 +2,16 @@ from dataclasses import dataclass
 from typing import List
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
+from kgraph.api.search import search_entity
 from kgraph.api.state import analyses, analysis_chunks
 
 router = APIRouter()
+
+
+class EntitySearchRequest(BaseModel):
+    text: str
 
 
 def _edge_pairs(analysis_id: str) -> dict[str, List[tuple[str, str]]]:
@@ -133,3 +139,26 @@ def get_node_chunks(analysis_id: str, node_id: str):
     # Deterministic ordering by document then segment index.
     chunks.sort(key=lambda c: (c.doc_id, c.index))
     return {"node_id": node_id, "chunks": [c.to_dict() for c in chunks]}
+
+
+@router.post("/{analysis_id}/entity-search")
+def entity_search(analysis_id: str, req: EntitySearchRequest):
+    """Search a user-typed entity inside the analysis's documents.
+
+    Returns whether the entity appears in the fetched papers (``found`` /
+    ``partial`` / ``not_found``), the existing graph node it matches (if any),
+    its mention spans, and — when it is a new entity — the relations needed to
+    wire it into the graph.
+    """
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Entity text is required")
+
+    try:
+        result = search_entity(analysis_id, text)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return result

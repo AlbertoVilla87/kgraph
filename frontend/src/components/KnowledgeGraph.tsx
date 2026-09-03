@@ -32,6 +32,9 @@ interface KnowledgeGraphProps {
   fill?: boolean;
   filter?: NodeFilter;
   incremental?: boolean;
+  highlightNodeId?: string | null;
+  /** When true the node was added by the user's search (not pre-existing). */
+  highlightIsNewNode?: boolean;
 }
 
 const DOC_COLORS = [
@@ -72,12 +75,14 @@ export default function KnowledgeGraph({
   fill = false,
   filter = 'all',
   incremental = false,
+  highlightNodeId = null,
+  highlightIsNewNode = false,
 }: KnowledgeGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const [cyReady, setCyReady] = useState(false);
-
-  // Keep latest props reachable from long-lived cytoscape event handlers.
+  const retry = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cleanup = useRef<(() => void) | undefined>(undefined);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const incrementalRef = useRef(incremental);
@@ -416,6 +421,53 @@ export default function KnowledgeGraph({
       nodetoggleClass(edge, 'filtered-out', src || tgt);
     });
   }, [filter]);
+
+  // Pulse/highlight a node by id (e.g. when a searched entity is found or
+  // added). The centred node flashes (border/halo) a few times; neighbours
+  // briefly brighten so the user sees what it links to. A newly added node
+  // (searched by the user) flashes green to distinguish it from one that was
+  // already part of the discovered graph (amber).
+  useEffect(() => {
+    if (!cyRef.current || !highlightNodeId) return;
+    const cy = cyRef.current;
+    const ring = highlightIsNewNode ? '#34d399' : '#f5b759';
+
+    const attempt = () => {
+      const node = cy.getElementById(highlightNodeId);
+      // The node may not be mounted yet (partially-added nodes render into
+      // cytoscape asynchronously) — retry briefly before giving up.
+      if (!node || node.length === 0) {
+        retry.current = setTimeout(attempt, 60);
+        return;
+      }
+      cy.fit(node, 70);
+      const pulse = () => {
+        node
+          .animate({ style: { 'border-width': 8, 'border-color': ring } }, { duration: 220, queue: false })
+          .delay(260)
+          .animate({ style: { 'border-width': 4, 'border-color': 'data(docColor)' } }, { duration: 260, queue: false });
+      };
+      const neigh = node.neighborhood().nodes();
+      neigh?.addClass('kg-neighbor-flash');
+      pulse();
+      const h1 = setTimeout(pulse, 600);
+      const h2 = setTimeout(pulse, 1200);
+      const clear = setTimeout(() => neigh?.removeClass('kg-neighbor-flash'), 2000);
+      cleanup.current = () => {
+        clearTimeout(h1);
+        clearTimeout(h2);
+        clearTimeout(clear);
+        neigh?.removeClass('kg-neighbor-flash');
+      };
+    };
+
+    attempt();
+    return () => {
+      clearTimeout(retry.current);
+      cleanup.current?.();
+      cleanup.current = undefined;
+    };
+  }, [highlightNodeId, highlightIsNewNode, incremental]);
 
   return (
     <div className="relative h-full w-full canvas-rings">
