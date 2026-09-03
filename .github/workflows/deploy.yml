@@ -1,0 +1,61 @@
+# ── Deploy to EC2 via SSM ──────────────────────────────────────────
+# Trigger: manual dispatch only (workflow_dispatch).
+# Sends a shell command to the EC2 instance via SSM to pull the latest
+# images and restart docker compose.
+# ───────────────────────────────────────────────────────────────────
+
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (branch, tag, or commit SHA)"
+        required: false
+        default: "master"
+
+env:
+  AWS_REGION: eu-north-1
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-ssm
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy via SSM
+        shell: bash
+        run: |
+          REF="${{ inputs.ref }}"
+          aws ssm send-command \
+            --instance-ids "${{ vars.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[
+              'cd /home/ec2-user/kgraph',
+              'git fetch origin',
+              'git checkout $REF',
+              'git reset --hard origin/$REF',
+              'docker compose pull',
+              'docker compose up -d --remove-orphans'
+            ]" \
+            --timeout-seconds 300
+
+      - name: Wait for healthcheck
+        run: |
+          echo "Waiting for backend to become healthy..."
+          for i in $(seq 1 60); do
+            if curl -sf "http://${{ vars.EC2_PUBLIC_IP }}/api/health" > /dev/null 2>&1; then
+              echo "Backend healthy after ${i}0 seconds"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Backend did not become healthy within 10 minutes"
+          exit 1

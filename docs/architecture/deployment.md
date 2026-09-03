@@ -1,103 +1,288 @@
-# Deployment (design phase)
+# Deployment Runbook
 
-> **Status: design → provisioning.** This page records the *agreed* target
-> architecture for hosting Astrolabe on AWS. An account already exists (new AWS
-> experience, selected Region `eu-north-1`) and the first Terraform slice —
-> EC2 + wake Lambda + auto-stop scheduler + static site on S3/CloudFront — is
-> written on branch `ft/aws-deploy` (`infra/terraform/`), **validated but not
-> applied** (nothing billed yet). For the "on-demand" operating model (VM asleep
-> by default, woken on demand, auto-stop guard) plus the Terraform walkthrough,
-> see [AWS on-demand deployment](aws-ondemand.md).
+> **Operational guide** for deploying Astrolabe to AWS. This is the single
+> source of truth for getting the app running in production and keeping it
+> there. For Terraform infrastructure details, see
+> [AWS on-demand deployment](aws-ondemand.md).
 
-## Target architecture
+## Prerequisites
 
-The application is a **single-instance, stateful ML workload**, not a stateless web tier:
-
-- The **backend** (FastAPI at `backend/src/kgraph/api/main.py`) loads heavy local models into memory per process — GLiNER, SentenceTransformer/MiniLM, spaCy (`backend/configs/params.yaml`), all PyTorch-backed.
-- Analysis runs in **background threads** and its state lives in an **in-process dict** (`backend/src/kgraph/api/state.py`) — no database, no shared state.
-- The optional **citation mode** shells out to **Ollama** (`ollama/qwen3:0.6b`) for the concept taxonomy.
-
-`quick` mode (abstracts only) is light; `deep`/citation work drives real CPU + RAM usage. Because of the in-memory state and large model cold-start, the design is one always-on VM with Docker Compose — horizontal autoscaling (and therefore serverless/Fargate-first) is deliberately out of scope for now.
-
-![Target deployment architecture](../assets/deploy_architecture.png)
-
-> **Two diagrams cover the architecture:** this one shows the **infra / CI-CD**
-> topology ([`deploy.drawio`](../assets/deploy.drawio)); the
-> [application architecture](app-architecture.md) page shows the **single
-> FastAPI process** behind it (state, worker thread, pipeline, model cache).
-> Keep both in sync when you change either.
-
-> Editable source: `docs/assets/deploy.drawio` (open in [draw.io](https://draw.io) — the desktop app renders the embedded icon PNGs). Regenerable from `scripts/gen_deploy_drawio.mjs`, which emits **both** the `.drawio` **and** this PNG (SVG render + sharp), so the docs image never depends on the draw.io CLI (its headless exporter ignores embedded images):
->
-> ```bash
-> cd scripts && npm install && node gen_deploy_drawio.mjs
-> node gen_app_drawio.mjs    # companion app-architecture diagram
-> node verify_icons.mjs       # sanity-checks icons in BOTH diagrams paint
-> ```
-
-## Components
-
-| Component | Role | Notes |
+| Tool | Version | Purpose |
 |---|---|---|
-| **User — browser** | Client | HTTPS; the React SPA itself runs **in the cloud**, served by nginx |
-| **Route 53** | DNS only | Resolves the app name → EC2 Elastic IP; no ALB — TLS terminates at nginx |
-| **EC2 `t3.xlarge`** | Compute host | 4 vCPU / 16 GiB — runs Docker Compose |
-| **Security group** | Inbound policy | `443` allowed → nginx; `22` restricted (deploys go through SSM, not SSH) |
-| **nginx container** | Frontend + reverse proxy | Serves `dist/` (React SPA), proxies `/api` → FastAPI; TLS termination |
-| **FastAPI container** | Graph pipeline | `uvicorn kgraph.api.main:app` on `:8000` |
-| **Ollama container** *(optional)* | Qwen3 0.6b | Only needed for citation-guided discovery |
-| **Ephemeral storage** | Runtime scratch | `data/` **is barely touched**: full text streams as ar5iv HTML (BeautifulSoup) — the only PDF download is the seed paper in quick mode; all discarded. **No persistent user data, no EBS volume** |
-| **Hugging Face Hub** | Model cache | Downloaded at image build time (offline at runtime), via GitHub Actions → Docker image |
-| **arXiv / ar5iv** | Upstream sources | Fetched over the internet at runtime |
-| **ECR** 🏷 (diagram) | Private image registry | `kgraph/backend` + `kgraph/frontend`, tagged `:vX.Y.Z` (+ `:latest`); pushed from CI, pulled on the EC2 |
-| **OIDC / IAM role** 🔑 (diagram) | CI auth | GitHub assumes a Terraform-created IAM role (no static credentials) to push to ECR and run SSM deploys — see [pipelines](pipelines.md) |
-| **CloudWatch** 📈 (diagram) | Observability | Logs + basic metrics + alerts from the one instance |
-| **Healthcheck** (post-deploy) | Deploy verification | Poll `/api/health` (via Route 53) after `compose up` to wait out the model cold-start |
-| **Secrets — `.env`** (diagram) | Config | `.env` lives **on the box via SSM** (gitignored); only `.env.example` is committed |
+| AWS CLI v2 | ≥ 2.15 | Account access (`aws sso login`) |
+| Terraform | ≥ 1.6 | Infra provisioning |
+| Docker + Docker Compose | v2 | Local build & EC2 runtime |
+| Git | ≥ 2.30 | Source control |
+| GitHub repo | `AlbertoVilla87/kgraph` | CI/CD origin |
 
-> The diagram marks the instance as a **single point of failure** (deliberate):
-> one VM, no autoscaling — justified by the in-memory state + cold-start model
-> (see below). To save cost it is kept **asleep unless used**: the on-demand
-> wake/auto-stop stack automates that (see [AWS on-demand deployment](aws-ondemand.md)),
-> versus the old ~$75/mo always-on `t3.xlarge`.
+**AWS account**: new-experience project, Region `eu-north-1` (fixed). IAM
+roles for GitHub Actions (OIDC) and EC2 SSM access must already exist — see
+Stage 0 in [pipelines](pipelines.md).
 
-## Chosen approach: EC2 + Docker Compose
+---
 
-**Why this over a managed/serverless option:**
+## 1 — Infrastructure (Terraform)
 
-1. **In-memory state** (`analyses` dict, background threads) means the app is not horizontally scalable today. A single VM matches the actual concurrency model.
-2. **Heavy cold-start**: models are GBs of PyTorch weights loaded once per process — the long-lived VM amortizes this.
-3. **Shared runtime state across containers** (Ollama on `localhost:11434`, `data/` writes) is trivial with Compose.
-4. **Cheapest correct** option: one `t3.xlarge` is ~$75/mo; everything serverless-oriented would cost more for the same single-user or small-team workload.
+The Terraform stack lives in `infra/terraform/` and creates:
 
-**Sizing plan:**
+- **EC2 `t3.large`** (AL2023, Docker pre-installed via `user_data`)
+- **Elastic IP** (static public IPv4)
+- **Security group** (ports 80/443 open; port 22 closed)
+- **Wake Lambda** + function URL + auto-stop EventBridge scheduler
+- **S3 + CloudFront** for the frontend SPA (always-on static site)
+- **IAM**: EC2 instance profile (SSM), Lambda execution role
 
-| Workload | Instance | Notes |
+### Apply
+
+```bash
+cd infra/terraform
+terraform init
+terraform plan -out=tfplan      # review
+terraform apply tfplan
+```
+
+After apply, note the outputs:
+
+```
+backend_public_ip  = "X.X.X.X"
+wake_url           = "https://....lambda-url.eu-north-1.on.aws/"
+stop_command       = "aws lambda invoke ..."
+frontend_url       = "https://d1234.cloudfront.net"
+```
+
+Save the `EC2_INSTANCE_ID` in GitHub repo variables (Settings → Variables →
+Repository variables) — the deploy workflow needs it.
+
+---
+
+## 2 — First Deploy (manual)
+
+The first time, SSH or SSM into the EC2 and run the provision script:
+
+```bash
+# From your local machine (SSM):
+aws ssm send-command \
+  --instance-ids "<EC2_INSTANCE_ID>" \
+  --document-name AWS-RunShellScript \
+  --parameters 'commands=["curl -fsSL https://raw.githubusercontent.com/AlbertoVilla87/kgraph/master/scripts/ec2-provision.sh | bash"]'
+```
+
+Or via SSH (if enabled temporarily):
+
+```bash
+ssh ec2-user@<PUBLIC_IP>
+bash /tmp/ec2-provision.sh
+```
+
+What it does:
+
+1. Clones the repo to `~/kgraph`
+2. Copies `.env.example` → `.env` (edit if needed)
+3. Runs `docker compose pull` (falls back to local build if no ECR images)
+4. Starts services with `docker compose up -d`
+
+### Verify
+
+```bash
+# From the EC2 or your local machine:
+curl http://<PUBLIC_IP>/api/health
+# → {"status":"ok"}
+
+# Frontend:
+open http://<PUBLIC_IP>
+```
+
+The first start is slow (~2–3 min) because the backend loads ML models into
+memory. The Docker healthcheck waits up to 120s (`start-period`) before
+reporting healthy.
+
+---
+
+## 3 — CI/CD (GitHub Actions)
+
+### Setup (one-time)
+
+1. **Create ECR repos** (Terraform or CLI):
+
+   ```bash
+   aws ecr create-repository --repository-name kgraph/backend --region eu-north-1
+   aws ecr create-repository --repository-name kgraph/frontend --region eu-north-1
+   ```
+
+2. **GitHub secrets** (Settings → Secrets → Actions):
+
+   | Secret | Value |
+   |---|---|
+   | `AWS_ACCOUNT_ID` | `184463060626` |
+
+3. **GitHub variables** (Settings → Variables → Actions):
+
+   | Variable | Value |
+   |---|---|
+   | `EC2_INSTANCE_ID` | From `terraform output` |
+   | `EC2_PUBLIC_IP` | From `terraform output` |
+
+### Build images → ECR
+
+Triggered by pushing a `v*` tag or manual dispatch:
+
+```bash
+git tag v0.1.0
+git push --tags
+# → .github/workflows/build.yml runs
+# → pushes kgraph/backend:v0.1.0 + kgraph/frontend:v0.1.0 to ECR
+```
+
+### Deploy to EC2
+
+Triggered manually from the GitHub Actions UI (workflow_dispatch):
+
+```
+Actions → deploy → Run workflow → ref: master → Run workflow
+```
+
+What it does:
+
+1. Assumes the `github-actions-ssm` IAM role via OIDC
+2. Sends a shell command to the EC2 via SSM: `git pull && docker compose up -d`
+3. Polls `/api/health` until the backend responds (up to 10 min)
+
+---
+
+## 4 — Day-to-Day Operations
+
+### Wake / stop (on-demand model)
+
+The VM sleeps by default and wakes on the first request. See
+[AWS on-demand deployment](aws-ondemand.md) for the Lambda/Scheduler setup.
+
+```bash
+# Wake the instance:
+curl "<wake_url>"
+
+# Stop manually (auto-stop fires after 3h by default):
+aws lambda invoke --function-name kgraph-astrolabe-wake \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"action":"stop"}' /dev/stdout
+```
+
+### View logs
+
+```bash
+# Backend logs (on the EC2):
+docker compose logs -f backend
+
+# All services:
+docker compose logs -f
+
+# Nginx access logs:
+docker compose logs nginx | grep -v "200 OK"
+```
+
+### Restart services
+
+```bash
+# On the EC2:
+cd ~/kgraph
+docker compose restart backend    # restart just the backend
+docker compose up -d --pull always # pull latest images + recreate
+```
+
+### Upgrade (pull new code + rebuild)
+
+```bash
+# On the EC2:
+cd ~/kgraph
+git pull origin master
+docker compose up -d --build --remove-orphans
+```
+
+Or use the GitHub Actions deploy workflow — it does the same thing remotely.
+
+### Check model status
+
+```bash
+# Verify models are baked in:
+docker compose exec backend ls -lh /app/models/
+# Should show:
+#   gliner-relex-large-v0.5/   (~500 MB)
+#   all-MiniLM-L6-v2/          (~90 MB)
+```
+
+---
+
+## 5 — Troubleshooting
+
+### Backend won't start
+
+```bash
+docker compose logs backend | tail -30
+```
+
+Common causes:
+
+| Symptom | Fix |
+|---|---|
+| `ModuleNotFoundError` | Image wasn't built from the right context. Rebuild: `docker compose build backend` |
+| `OOMKilled` | Instance too small for GLiNER + MiniLM. Upgrade to `t3.xlarge` (16 GiB) |
+| `HF_HUB_OFFLINE` error | Model not baked into image. Rebuild the image with `docker build` |
+| Healthcheck timeout | First start takes 2–3 min (model loading). Wait; check `docker compose logs -f backend` |
+
+### Frontend shows "Cannot connect to API"
+
+```bash
+# Check nginx config:
+docker compose exec nginx cat /etc/nginx/conf.d/default.conf
+
+# Check backend is reachable from nginx:
+docker compose exec nginx curl -s http://backend:8000/api/health
+```
+
+### ECS/EC2: "Permission denied" on ECR pull
+
+The EC2 instance profile needs `AmazonEC2ContainerRegistryReadOnly`. Verify:
+
+```bash
+aws iam list-attached-role-policies --role-name <instance-role>
+```
+
+### CORS errors in browser
+
+`main.py` defaults to `http://localhost:5173`. In production (same-origin via
+nginx), CORS isn't needed. If you see CORS errors, check that the frontend
+is served through nginx (port 80), not Vite dev server.
+
+---
+
+## 6 — Cost Estimate
+
+| Resource | Monthly cost | Notes |
 |---|---|---|
-| Development / demo | `t3.large` (2 vCPU, 8 GiB) | OK for `quick` mode, abstracts only |
-| **Recommended** | **`t3.xlarge`** (4 vCPU, 16 GiB) | Handles `deep` + citation; headroom for GLiNER/MiniLM/Ollama in RAM |
-| Heavy / GPU experiments | `g4dn.xlarge` | Only if torch demanded GPU — not required by the current pipeline |
+| EC2 `t3.large` | ~$25 | Running ~8h/day (on-demand model) |
+| EIP | ~$3.60 | Charged while instance is stopped |
+| S3 + CloudFront | ~$1 | Static frontend, low traffic |
+| Lambda (wake) | ~$0 | < 1M invocations/mo |
+| ECR storage | ~$1 | ~1 GB images |
+| **Total** | **~$30/mo** | On-demand; ~$75/mo if always-on `t3.xlarge` |
 
-## Alternatives (documented, not chosen)
+---
 
-| Option | Fit | Why not default |
-|---|---|---|
-| **Lightsail container** | Single-click VM+container | Same model as EC2+Compose, less control; fine later for demo |
-| **ECS Fargate** | Managed containers | Cold starts + no in-memory multi-instance + EFS for models; value only *after* decoupling |
-| **App Runner** | Simple single container | No GPU/RAM flexibility; poor fit for long-running ML requests |
-| **Lambda** | Serverless | Hard limits on time/memory; background threads + GB models impossible |
+## 7 — File Map
 
-## Open decisions
-
-- **Storage (not persisted)**: models are **baked into the image** and PDFs are **ephemeral** — `data/` is fetched per analysis and discarded, so there is **no EBS data volume**; only the root disk persists (compose + `.env`). Keeps the instance nearly disposable.
-- **Ollama placement**: sidecar container vs. host service. Container keeps Compose self-contained; host keeps model cache separate.
-- **TLS termination**: nginx directly (fewer moving parts) vs. an ALB in front (needed only once HTTPS/cert rotation or multiple instances appear).
-- **State**: in-memory today; if concurrent users appear, move `analyses` to Redis and pipeline runs to workers — that is the moment Fargate/EKS starts paying off.
-- **Observability**: CloudWatch agent for logs/metrics; cheap and enough for one instance.
-
-## First-class concerns before deployment
-
-- `backend/configs/params.yaml` uses **relative model paths** (`models/...`) — the image must reproduce that layout (`WORKDIR` + `models/` inside the image), not expect an external mount.
-- `HF_HUB_OFFLINE=1` and docling cache location (`models/hub/`) must be replicated **inside the image** (see [parsers](../architecture/ingestion.md)).
-- **Ephemeral `data/`**: `quick`/citation modes never touch PDFs — full text comes as **ar5iv HTML** parsed with BeautifulSoup (`runner._fetch_arxiv_html`); the only PDF is the seed paper in quick mode (reference extraction). Everything is discarded per run, so there is no cache to maintain.
-- CORS in `main.py` allows `http://localhost:5173` only — relax when frontend is served from the same origin via nginx.
+```
+├── backend/Dockerfile              # ML models baked, HF_HUB_OFFLINE=1
+├── frontend/Dockerfile             # Vite build → nginx
+├── docker/
+│   └── nginx.conf                  # SPA + /api proxy → backend:8000
+├── docker-compose.yml              # Source of truth for all services
+├── .env.example                    # Template (copy to .env on the EC2)
+├── .github/workflows/
+│   ├── build.yml                   # Tag/dispatch → ECR push
+│   └── deploy.yml                  # Dispatch → SSM compose up
+├── scripts/ec2-provision.sh        # One-time EC2 bootstrap
+├── infra/terraform/                # AWS infra (EC2, Lambda, S3, IAM)
+└── docs/architecture/
+    ├── deployment.md               # ← this file
+    ├── aws-ondemand.md             # Wake/auto-stop walkthrough
+    └── pipelines.md                # CI/CD details + OIDC setup
+```

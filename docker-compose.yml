@@ -1,0 +1,44 @@
+# ── Astrolabe — Docker Compose ─────────────────────────────────────
+# Usage:
+#   cp .env.example .env    # edit with your values
+#   docker compose up -d    # start backend + nginx
+#   docker compose up -d --profile citation  # + Ollama for citation mode
+# ───────────────────────────────────────────────────────────────────
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: astrolabe-backend
+    env_file: .env
+    volumes:
+      - backend-data:/app/data
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: astrolabe-nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Optional: Ollama for citation-guided discovery (Qwen3 0.6b)
+  # Activate with: docker compose up -d --profile citation
+  ollama:
+    image: ollama/ollama:latest
+    container_name: astrolabe-ollama
+    profiles:
+      - citation
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+  ollama-data:

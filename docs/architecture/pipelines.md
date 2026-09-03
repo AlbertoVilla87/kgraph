@@ -1,14 +1,16 @@
-# Build, deploy & AWS account bootstrap (design → provisioning)
+# Build, deploy & AWS account bootstrap
 
-> **Status: provisioning, first slice done.** The account now exists (new AWS
-> experience, selected Region **`eu-north-1`**, profile `default`) and the first
+> **Status: implementation done, ready to run.** The account exists (new AWS
+> experience, selected Region **`eu-north-1`**, profile `default`), the first
 > Terraform slice (EC2 + wake Lambda + auto-stop scheduler + static S3/CloudFront
-> site) is written on branch `ft/aws-deploy` (`infra/terraform/`) — see
-> [AWS on-demand deployment](aws-ondemand.md). **What follows is still to build:**
-> container/pipeline files, ECR, OIDC CI auth, SSM deploys, first release.
-> Decisions locked in so far (see [Deployment](deployment.md)):
-> **OIDC** auth from CI, **models baked into the image**, **SSM Run Command** to
-> deploy, **git tag → release** trigger, **Terraform** to provision the EC2.
+> site) is written (`infra/terraform/`) and the container/pipeline files are now
+> implemented in this repo — Dockerfiles, `docker-compose.yml`, `.env.example`,
+> GitHub Actions workflows, `ec2-provision.sh`. What remains is **execution**:
+> apply Terraform, create ECR repos / OIDC roles, first release.
+> Decisions locked in: **OIDC** auth from CI, **models baked into the image**
+> (no spaCy), **SSM Run Command** to deploy, **manual/`workflow_dispatch`** deploy
+> trigger, **git tag → build** trigger, **Terraform** to provision the EC2.
+> Follow the operational steps in the [Deployment Runbook](deployment.md).
 
 ## Stage 0 — AWS account (done via the new AWS experience)
 
@@ -36,14 +38,16 @@
 > deploy on the **Elastic IP + HTTP** (or a self-signed cert) and add the domain
 > later — see Open decisions.
 
-## Stage 1 — Container & pipeline files (this repo)
+## Stage 1 — Container & pipeline files (implemented)
+
+All container/pipeline files now exist in this repo:
 
 ```
 kgraph/
 ├── .github/workflows/
 │   ├── build.yml        # build imágenes backend+frontend → ECR   (tag/manual)
 │   └── deploy.yml       # SSM send-command sobre el EC2           (manual, tras build)
-├── Dockerfile.backend    # uv sync + modelos horneados; HF_HUB_OFFLINE=1 en runtime
+├── backend/Dockerfile    # uv sync + modelos horneados; HF_HUB_OFFLINE=1 en runtime
 ├── frontend/Dockerfile   # multi-stage: vite build → nginx (dist/ + proxy /api)
 ├── docker/
 │   └── nginx.conf        # SPA y proxy_pass /api → backend:8000
@@ -58,10 +62,10 @@ Key choices encoded here:
 - `docker-compose.yml` at repo root is the single source of truth — the same
   file runs against the EC2 (via `git pull` on the repo clone) and locally
   during development, keeping parity.
-- **Models baked in the image** (`Dockerfile.backend` downloads GLiNER,
-  MiniLM/sentence-transformers, spaCy `en_core_web_sm`, docling hub cache and
-  then sets `HF_HUB_OFFLINE=1`) — reproducible large image, no EBS model
-  dependency.
+- **Models baked in the image** (`backend/Dockerfile` downloads GLiNER (`urchade/gliner_multi-v2.1`)
+  and MiniLM/sentence-transformers, then sets `HF_HUB_OFFLINE=1`) — reproducible
+  large image, no EBS model dependency. **spaCy is NOT included** (no longer used
+  in the pipeline).
 - **PDFs are not persisted**: `data/` is an ephemeral per-run directory inside
   the backend container, discarded after each analysis — no EBS data volume.
   The EC2 is nearly disposable (rebuild = clone + compose up + pull images).
@@ -119,7 +123,7 @@ flowchart LR
     host --> health["poll /api/health via Route 53"]
 ```
 
-`build.yml` skeleton (trigger: `v*` tag or `workflow_dispatch`):
+`build.yml` — **implemented** at `.github/workflows/build.yml` (trigger: `v*` tag or `workflow_dispatch`):
 
 ```yaml
 name: build
@@ -139,32 +143,86 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-ecr
           aws-region: eu-north-1
-      # docker buildx build → ECR: kgraph/backend, kgraph/frontend
-      # tags: $GITHUB_REF_NAME (vX.Y.Z) + latest
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/kgraph/backend:${{ github.ref_name }}
+            ${{ steps.ecr.outputs.registry }}/kgraph/backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/kgraph/frontend:${{ github.ref_name }}
+            ${{ steps.ecr.outputs.registry }}/kgraph/frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 ```
 
-`deploy.yml` skeleton (trigger: `workflow_dispatch`, input `ref`/image tag):
+`deploy.yml` — **implemented** at `.github/workflows/deploy.yml` (trigger: `workflow_dispatch`, input `ref`):
 
 ```yaml
 name: deploy
 on:
   workflow_dispatch:
     inputs:
-      ref: { type: string, default: latest }
+      ref:
+        description: "Git ref to deploy (branch, tag, or commit SHA)"
+        required: false
+        default: "master"
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions: { id-token: write, contents: read }
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-ssm
           aws-region: eu-north-1
-      - name: Compose up on EC2
-        run: aws ssm send-command --instance-ids ${{ vars.EC2_INSTANCE_ID }} \
-              --document-name AWS-RunShellScript \
-              --parameters command=["cd ~/kgraph && git pull && docker compose up -d --pull always"]
+      - name: Deploy via SSM
+        shell: bash
+        run: |
+          REF="${{ inputs.ref }}"
+          aws ssm send-command \
+            --instance-ids "${{ vars.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[
+              'cd /home/ec2-user/kgraph',
+              'git fetch origin',
+              'git checkout $REF',
+              'git reset --hard origin/$REF',
+              'docker compose pull',
+              'docker compose up -d --remove-orphans'
+            ]"
+      - name: Wait for healthcheck
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf "http://${{ vars.EC2_PUBLIC_IP }}/api/health" > /dev/null 2>&1; then
+              echo "Backend healthy"; exit 0
+            fi
+            sleep 10
+          done
+          exit 1
 ```
+
+> **Note:** the first-time ECR push includes models baked into the image
+> (GLiNER ~2.5 GB, MiniLM ~90 MB). Expect the build to take several minutes and
+> the resulting image to be large — use `docker buildx` cache (as above) to
+> speed up rebuilds.
 
 ## First release (runbook)
 
