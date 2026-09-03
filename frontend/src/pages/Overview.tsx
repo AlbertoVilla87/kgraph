@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   GitBranch,
   ArrowRight,
@@ -14,6 +14,7 @@ import ChunkViewer from '../components/ChunkViewer';
 const API_BASE = '/api';
 
 const STORAGE_KEY = 'astrolabe_last_analysis';
+const EXTRA_KEY = 'astrolabe_extra_nodes';
 
 interface Step {
   key: string;
@@ -55,6 +56,34 @@ interface UserTopic {
   status: 'found' | 'partial' | 'not_found';
 }
 
+interface EntityRelation {
+  relation: string;
+  head: string;
+  tail: string;
+  head_id?: string | null;
+  tail_id?: string | null;
+  head_is_query?: boolean;
+  tail_is_query?: boolean;
+  score: number;
+  doc_id?: string;
+}
+
+interface EntitySearchResult {
+  status: 'found' | 'partial' | 'not_found';
+  existing_node?: {
+    id: string;
+    name?: string;
+    label?: string;
+    type?: string;
+    importance?: number;
+    documents?: string[];
+  } | null;
+  mentions?: { doc_id?: string; segment?: number; start?: number; end?: number; text?: string }[];
+  relations?: EntityRelation[];
+  documents?: string[];
+  query?: string;
+}
+
 const mockUserTopics: UserTopic[] = [
   { id: '1', name: 'Few-shot Learning', status: 'found' },
   { id: '2', name: 'Graph Neural Networks', status: 'partial' },
@@ -76,6 +105,17 @@ export default function Overview() {
     }
   };
 
+  const loadExtras = (): { nodes: GraphNode[]; edges: GraphEdge[] } => {
+    try {
+      const raw = localStorage.getItem(EXTRA_KEY);
+      if (!raw) return { nodes: [], edges: [] };
+      const parsed = JSON.parse(raw) as { nodes: GraphNode[]; edges: GraphEdge[] };
+      return { nodes: parsed.nodes || [], edges: parsed.edges || [] };
+    } catch {
+      return { nodes: [], edges: [] };
+    }
+  };
+
   const [depthMode, setDepthMode] = useState<'quick' | 'deep'>('quick');
   const [discoveryMode, setDiscoveryMode] = useState<'topic' | 'citation'>('citation');
   const [seedUrl, setSeedUrl] = useState('');
@@ -86,6 +126,17 @@ export default function Overview() {
   const [userTopics, setUserTopics] = useState<UserTopic[]>(mockUserTopics);
   const [newTopic, setNewTopic] = useState('');
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [extraNodes, setExtraNodes] = useState<GraphNode[]>(() => loadExtras().nodes);
+  const [extraEdges, setExtraEdges] = useState<GraphEdge[]>(() => loadExtras().edges);
+  const [highlightNodeId, setHighlightNodeId] = useState<string | null>(null);
+  const [highlightIsNew, setHighlightIsNew] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [searchMessage, setSearchMessage] = useState<string | null>(null);
+
+  // Refs to the latest graph node/edge lists so async search handlers can
+  // read current values without stale closures.
+  const graphNodesRef = useRef<GraphNode[]>([]);
+  const extraEdgesRef = useRef<GraphEdge[]>([]);
 
   const pollStatus = useCallback(async (analysisId: string) => {
     try {
@@ -118,7 +169,12 @@ export default function Overview() {
     setError(null);
     setAnalysisResult(null);
     setAnalysisStatus(null);
-    setSelectedNode(null);
+      setSelectedNode(null);
+      setHighlightNodeId(null);
+      setHighlightIsNew(false);
+    setSearchMessage(null);
+    setExtraNodes([]);
+    setExtraEdges([]);
     setAnalyzing(true);
 
     try {
@@ -143,12 +199,108 @@ export default function Overview() {
   };
 
   const handleAddTopic = () => {
-    if (!newTopic.trim()) return;
-    setUserTopics([
-      ...userTopics,
-      { id: String(Date.now()), name: newTopic.trim(), status: 'not_found' },
-    ]);
+    const topic = newTopic.trim();
+    if (!topic) return;
     setNewTopic('');
+
+    if (!analysisResult || !analysisResult.id) {
+      setSearchMessage('Run an analysis first to search for this entity.');
+      setUserTopics((prev) => [
+        ...prev,
+        { id: String(Date.now()), name: topic, status: 'not_found' },
+      ]);
+      return;
+    }
+
+    setSearching(true);
+    setSearchMessage(null);
+    setUserTopics((prev) => [...prev, { id: String(Date.now()), name: topic, status: 'not_found' }]);
+
+    fetch(`${API_BASE}/graph/${analysisResult.id}/entity-search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: topic }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error('Search failed');
+        return r.json();
+      })
+      .then((res: EntitySearchResult) => {
+        applySearchResult(topic, res);
+      })
+      .catch((e) => {
+        setSearchMessage(e instanceof Error ? e.message : 'Search failed');
+      })
+      .finally(() => setSearching(false));
+  };
+
+  const applySearchResult = (topic: string, res: EntitySearchResult) => {
+    if (res.status === 'not_found') {
+      setSearchMessage(`"${topic}" not found in the analyzed papers.`);
+      setUserTopics((prev) => prev.map((t) => (t.name === topic ? { ...t, status: 'not_found' } : t)));
+      return;
+    }
+
+    // Found: existing node — pulse it and report its connections.
+    if (res.existing_node?.id) {
+      setHighlightNodeId(res.existing_node.id);
+      setHighlightIsNew(false);
+      const relCount = res.relations?.length ?? 0;
+      setSearchMessage(
+        `Already in graph — "${res.existing_node.name || res.existing_node.label || res.existing_node.id}" links to ${relCount} relation(s).`,
+      );
+      setUserTopics((prev) => prev.map((t) => (t.name === topic ? { ...t, status: 'found' } : t)));
+      return;
+    }
+
+    // Partial: entity present in text but not a known node. Add it, wired to
+    // whichever existing nodes GLiNER connected it to.
+    setUserTopics((prev) => prev.map((t) => (t.name === topic ? { ...t, status: 'partial' } : t)));
+    const docList = res.documents || [];
+    const newNodeId = `user:${topic.toLowerCase().replace(/\s+/g, '-')}`;
+    const newNode: GraphNode = {
+      id: newNodeId,
+      label: topic,
+      name: topic,
+      source: 'refs-only',
+      importance: 8,
+      type: 'concept',
+      documents: docList,
+    };
+
+    const existingIds = new Set(graphNodesRef.current.map((n) => n.id));
+    setExtraNodes((prev) => {
+      if (prev.some((n) => n.id === newNodeId)) return prev;
+      return [...prev, newNode];
+    });
+
+    const newEdges: GraphEdge[] = [];
+    for (const rel of res.relations || []) {
+      let otherId: string | null = null;
+      if (rel.head_is_query) otherId = rel.tail_id ?? null;
+      else if (rel.tail_is_query) otherId = rel.head_id ?? null;
+      else continue;
+      if (!otherId || !existingIds.has(otherId) || otherId === newNodeId) continue;
+      const edgeId = `${newNodeId}_${otherId}_${rel.relation}`;
+      if (extraEdgesRef.current.some((e) => e.id === edgeId)) continue;
+      newEdges.push({
+        id: edgeId,
+        source: newNodeId,
+        target: otherId,
+        relation: rel.relation,
+        confidence: rel.score,
+        documents: rel.doc_id ? [rel.doc_id] : docList,
+      });
+    }
+
+    if (newEdges.length) setExtraEdges((prev) => [...prev, ...newEdges]);
+    setHighlightNodeId(newNodeId);
+    setHighlightIsNew(true);
+    setSearchMessage(
+      newEdges.length
+        ? `Found by you — added "${topic}" and linked to ${newEdges.length} existing node(s).`
+        : `Found by you — "${topic}" appears in the papers but could not be linked to existing nodes.`,
+    );
   };
 
   const handleRemoveTopic = (id: string) => {
@@ -167,7 +319,27 @@ export default function Overview() {
     }
   }, [analysisResult]);
 
-  const graphNodes: GraphNode[] = analysisResult?.topics ?? analysisStatus?.partial_graph?.topics ?? [];  const graphEdges: GraphEdge[] = analysisResult?.relationships ?? analysisStatus?.partial_graph?.relationships ?? [];
+  // Persist user-added nodes/edges so they survive a page reload.
+  useEffect(() => {
+    try {
+      localStorage.setItem(EXTRA_KEY, JSON.stringify({ nodes: extraNodes, edges: extraEdges }));
+    } catch {
+      // ignore quota / private-mode failures
+    }
+  }, [extraNodes, extraEdges]);
+
+  const graphNodes: GraphNode[] = [
+    ...(analysisResult?.topics ?? analysisStatus?.partial_graph?.topics ?? []),
+    ...extraNodes,
+  ];
+  const graphEdges: GraphEdge[] = [
+    ...(analysisResult?.relationships ?? analysisStatus?.partial_graph?.relationships ?? []),
+    ...extraEdges,
+  ];
+
+  // Keep refs in sync for async search handlers (computed after extras merge).
+  graphNodesRef.current = graphNodes;
+  extraEdgesRef.current = extraEdges;
   const sharedTopics = graphNodes.filter((n) => (n.documents?.length ?? 0) > 1).length;
 
   return (
@@ -266,6 +438,8 @@ export default function Overview() {
               fill
               onNodeClick={setSelectedNode}
               incremental={analyzing && !analysisResult && !!analysisStatus?.partial_graph}
+              highlightNodeId={highlightNodeId}
+              highlightIsNewNode={highlightIsNew}
             />
           </div>
         ) : (
@@ -299,7 +473,15 @@ export default function Overview() {
         )}
 
         {/* Floating: explore your own topics */}
-        <TopicDock topics={userTopics} onAdd={handleAddTopic} onRemove={handleRemoveTopic} value={newTopic} onChange={setNewTopic} />
+        <TopicDock
+          topics={userTopics}
+          onAdd={handleAddTopic}
+          onRemove={handleRemoveTopic}
+          value={newTopic}
+          onChange={setNewTopic}
+          searching={searching}
+          message={searchMessage}
+        />
       </section>
 
       {/* ===================== Progress ===================== */}
@@ -510,12 +692,16 @@ function TopicDock({
   onRemove,
   value,
   onChange,
+  searching,
+  message,
 }: {
   topics: UserTopic[];
   onAdd: () => void;
   onRemove: (id: string) => void;
   value: string;
   onChange: (v: string) => void;
+  searching?: boolean;
+  message?: string | null;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -538,14 +724,25 @@ function TopicDock({
               type="text"
               value={value}
               onChange={(e) => onChange(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && onAdd()}
+              onKeyDown={(e) => e.key === 'Enter' && !searching && onAdd()}
               placeholder="e.g. few-shot learning"
+              disabled={searching}
               className="field h-9 flex-1 px-3 text-[13px]"
             />
-            <button onClick={onAdd} className="btn-primary h-9 px-3 flex items-center justify-center" title="Add topic">
-              <Plus size={15} strokeWidth={2.4} />
+            <button onClick={onAdd} disabled={searching} className="btn-primary h-9 px-3 flex items-center justify-center" title="Add topic">
+              {searching ? (
+                <div className="w-3.5 h-3.5 border-2 border-[#04201c] border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Plus size={15} strokeWidth={2.4} />
+              )}
             </button>
           </div>
+
+          {message && (
+            <p className="text-[11px] leading-snug mb-3 px-0.5 text-[var(--color-text-secondary)]">
+              {message}
+            </p>
+          )}
 
           <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
             {topics.map((topic) => (
