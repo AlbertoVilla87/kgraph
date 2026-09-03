@@ -2,7 +2,10 @@
 
 > **Operational guide** for deploying Astrolabe to AWS. This is the single
 > source of truth for getting the app running in production and keeping it
-> there. For Terraform infrastructure details, see
+> there. All container/pipeline files are **implemented and merged** (PR #45):
+> Dockerfiles, `docker-compose.yml`, GitHub Actions, `ec2-provision.sh`.
+> What remains is **execution** (see § "Prerequisites" → "Execution steps").
+> For Terraform infrastructure details, see
 > [AWS on-demand deployment](aws-ondemand.md).
 
 ## Prerequisites
