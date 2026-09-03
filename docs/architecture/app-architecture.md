@@ -36,7 +36,7 @@ wrong under `--workers > 1`.
 | **FastAPI handlers** (`/api/analysis/*`) | Sync `def` endpoints; spawn the worker thread and return `AnalysisStatus` |
 | **In-memory state** | `analyses: dict` — status, progress, result; lost on restart |
 | **Worker thread** | `threading.Thread(target=run_analysis, daemon=True)` |
-| **pipeline (one run)** | `INPUT (topic\|seed_url) → DISCOVERY (topic\|citation) → CORPUS (full text + segmentation) → EXTRACTION → MERGE` |
+| **pipeline (one run)** | `INPUT (seed_url) → DISCOVERY (citation) → ASSEMBLY (Qwen3 taxonomy) → EXTRACTION → MERGE` |
 | **Model cache** | Single-load lock (threading.Lock) around GLiNER / MiniLM / spaCy loads |
 | **Ollama · qwen3:0.6b** *(dashed)* | Optional LLM inference for citation discovery, over HTTP `localhost:11434` |
 | **arXiv API / ar5iv** *(dashed)* | Optional upstream fetch for metadata / full text, over HTTPS |

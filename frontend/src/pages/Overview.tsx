@@ -116,7 +116,6 @@ export default function Overview() {
     }
   };
 
-  const [discoveryMode, setDiscoveryMode] = useState<'topic' | 'citation'>('citation');
   const [seedUrl, setSeedUrl] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
@@ -177,7 +176,7 @@ export default function Overview() {
     setAnalyzing(true);
 
     try {
-      const body = { seed_url: seedUrl.trim(), max_references: 15, discovery: discoveryMode };
+      const body = { seed_url: seedUrl.trim(), max_references: 15 };
 
       const res = await fetch(`${API_BASE}/analysis/analyze`, {
         method: 'POST',
@@ -375,15 +374,6 @@ export default function Overview() {
             />
           </div>
 
-          <div className="seg">
-            <button data-active={discoveryMode === 'citation'} onClick={() => setDiscoveryMode('citation')} disabled={analyzing}>
-              Discovery · Citation
-            </button>
-            <button data-active={discoveryMode === 'topic'} onClick={() => setDiscoveryMode('topic')} disabled>
-              Discovery · AutoDiscover
-            </button>
-          </div>
-
           <button
             onClick={handleAnalyze}
             disabled={analyzing || !seedUrl.trim()}
@@ -405,7 +395,7 @@ export default function Overview() {
         <p className="text-[11px] text-[var(--color-text-faint)] mt-2 font-mono">
           ~5min · full text + PDF
           <span className="mx-2 text-[var(--color-line)]">|</span>
-          {discoveryMode === 'topic' ? 'AutoDiscovers topic taxonomy from the abstract' : 'Reads citing contexts from reference papers'}
+          Reads citing contexts from reference papers
           <span className="mx-2 text-[var(--color-line)]">|</span>
           paste an arXiv URL to begin
         </p>

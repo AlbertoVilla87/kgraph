@@ -119,30 +119,18 @@ Key facts:
 
 ---
 
-## 3. Pipeline dispatch (discovery)
+## 3. Pipeline dispatch
 
-`run_analysis` branches on two axes: whether a `seed_url` or a `topic` was
-provided, and whether discovery is `topic` (KeyBERT + spaCy, LLM-free) or
-`citation` (seed's bibliography → Qwen3 taxonomy). Every pipeline is "deep":
-it parses full text and segments documents before extraction.
+The API now exposes a single pipeline: **citation-guided discovery**. `run_analysis`
+requires a `seed_url`; the seed's bibliography feeds a Qwen3 taxonomy and all
+documents get full text (ar5iv) + segmentation. The former `topic` (KeyBERT +
+spaCy, LLM-free) discovery mode was removed.
 
 ```mermaid
 flowchart TB
-    A["POST /api/analysis/analyze"] --> B{seed_url provided?}
-
-    B -- "yes" --> C{discovery}
-    B -- "no (topic)" --> T["_run_topic_pipeline<br/>ArxivSource search + abstracts"]
-
-    C -- "topic" --> S["_run_seed_pipeline<br/>seed PDF + references (full text)"]
-    C -- "citation" --> CIT["_run_citation_pipeline<br/>ar5iv full text + bibliography"]
-
-    T --> CORP
-    S --> CORP
+    A["POST /api/analysis/analyze<br/>(seed_url required)"] --> CIT["_run_citation_pipeline<br/>ar5iv full text + bibliography"]
     CIT --> RA["CitationAssembly.run<br/>ensure_ollama → Qwen3 taxonomy"]
-
-    CORP["_run_corpus_pipeline<br/>parse → segment → extract"]
-    CORP --> MERGE["merge → /result"]
-    RA --> MERGE
+    RA --> MERGE["merge → /result"]
 ```
 
 ---
