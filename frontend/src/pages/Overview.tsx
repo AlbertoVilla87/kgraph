@@ -328,14 +328,20 @@ export default function Overview() {
     }
   }, [extraNodes, extraEdges]);
 
-  const graphNodes: GraphNode[] = [
-    ...(analysisResult?.topics ?? analysisStatus?.partial_graph?.topics ?? []),
-    ...extraNodes,
-  ];
-  const graphEdges: GraphEdge[] = [
-    ...(analysisResult?.relationships ?? analysisStatus?.partial_graph?.relationships ?? []),
-    ...extraEdges,
-  ];
+  const graphNodes: GraphNode[] = useMemo(
+    () => [
+      ...(analysisResult?.topics ?? analysisStatus?.partial_graph?.topics ?? []),
+      ...extraNodes,
+    ],
+    [analysisResult, analysisStatus, extraNodes],
+  );
+  const graphEdges: GraphEdge[] = useMemo(
+    () => [
+      ...(analysisResult?.relationships ?? analysisStatus?.partial_graph?.relationships ?? []),
+      ...extraEdges,
+    ],
+    [analysisResult, analysisStatus, extraEdges],
+  );
 
   // Keep refs in sync for async search handlers (computed after extras merge).
   graphNodesRef.current = graphNodes;
