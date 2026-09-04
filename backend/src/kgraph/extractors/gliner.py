@@ -155,7 +155,10 @@ class GLiNERGraph(EntityRelationExtractor):
         self.relations = list[Relation]
         merging = my_config.entity_merging
         self.merger = (
-            EntityMerger()
+            EntityMerger(
+                threshold=merging.threshold,
+                model_path=merging.model,
+            )
             if merging.enabled
             else None
         )
