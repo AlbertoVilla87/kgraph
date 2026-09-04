@@ -130,6 +130,7 @@ def _graph_to_api(kg, classifications: dict, include_orphans: bool = False) -> t
             "importance": round(data.get("score", 0.5) * 10, 1),
             "source": classification,
             "documents": node_docs,
+            "community": data.get("community"),
         })
 
     edges = []
@@ -142,6 +143,8 @@ def _graph_to_api(kg, classifications: dict, include_orphans: bool = False) -> t
             "relation": data.get("relation_type", "related to"),
             "confidence": round(data.get("score", 0.5), 2),
             "documents": edge_docs,
+            "community": data.get("community"),
+            "inter_community": bool(data.get("inter_community", False)),
         })
 
     return nodes, edges
@@ -505,6 +508,7 @@ def _run_citation_pipeline_impl(a: dict, seed_url: str, max_references: int, upd
         "topics": nodes,
         "relationships": edges,
         "stats": stats,
+        "communities": result.community_summary,
     }
 
     # Cleanup: unload Ollama model

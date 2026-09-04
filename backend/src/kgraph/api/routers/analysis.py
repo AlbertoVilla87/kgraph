@@ -33,6 +33,7 @@ class TopicOut(BaseModel):
     importance: float
     source: str
     documents: list[str]
+    community: int | None = None
 
 
 class RelationshipOut(BaseModel):
@@ -42,6 +43,7 @@ class RelationshipOut(BaseModel):
     relation: str
     confidence: float
     documents: list[str]
+    inter_community: bool = False
 
 
 class PaperOut(BaseModel):
@@ -58,6 +60,7 @@ class AnalysisResult(BaseModel):
     topics: list[TopicOut]
     relationships: list[RelationshipOut]
     stats: dict
+    communities: dict | None = None
 
 
 @router.post("/analyze", response_model=AnalysisStatus)

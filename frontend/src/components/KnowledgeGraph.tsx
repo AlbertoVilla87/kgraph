@@ -10,6 +10,8 @@ export interface GraphNode {
   importance: number;
   type: string;
   documents?: string[];
+  /** Community id assigned by Louvain community detection (backend). */
+  community?: number;
 }
 
 export interface GraphEdge {
@@ -19,9 +21,13 @@ export interface GraphEdge {
   relation: string;
   confidence: number;
   documents?: string[];
+  /** True when an edge crosses two different communities. */
+  inter_community?: boolean;
 }
 
 export type NodeFilter = 'all' | 'main' | 'reference' | 'shared' | 'core' | 'seed-only' | 'refs-only';
+
+export type ColorMode = 'community' | 'doc';
 
 interface KnowledgeGraphProps {
   nodes: GraphNode[];
@@ -35,6 +41,13 @@ interface KnowledgeGraphProps {
   highlightNodeId?: string | null;
   /** When true the node was added by the user's search (not pre-existing). */
   highlightIsNewNode?: boolean;
+  /** How to colour nodes: by Louvain community (backed by `community`) or by document. */
+  colorMode?: ColorMode;
+  /** When set, only nodes of this community remain visible (null = all). */
+  communityFilter?: number | null;
+  /** Callback when the user changes the visibility mode / filters. */
+  onColorModeChange?: (mode: ColorMode) => void;
+  onCommunityFilterChange?: (community: number | null) => void;
 }
 
 const DOC_COLORS = [
@@ -48,7 +61,23 @@ const DOC_COLORS = [
   '#f472b6', // pink
 ];
 
-const DOC_COLOR_GRADIENT = `conic-gradient(${DOC_COLORS.join(', ')}, ${DOC_COLORS[0]})`;
+// Palette for Louvain communities (cycled by community id). Chosen to be
+// perceptually distinct in both hue and lightness so neighbouring communities
+// are easy to tell apart.
+const COMMUNITY_COLORS = [
+  '#ff5d5d', // red
+  '#2b8cff', // blue
+  '#22c55e', // green
+  '#ffb020', // amber
+  '#a855f7', // purple
+  '#14b8a6', // teal
+  '#ff6de0', // magenta
+  '#eab308', // yellow
+  '#06b6d4', // cyan
+  '#f97316', // orange
+  '#3b82f6', // steel blue
+  '#ef4444', // crimson
+];
 
 const SHARED_COLOR = '#f8fafc';
 const SHARED_EDGE_COLOR = '#35d6c1';
@@ -77,6 +106,10 @@ export default function KnowledgeGraph({
   incremental = false,
   highlightNodeId = null,
   highlightIsNewNode = false,
+  colorMode: colorModeProp,
+  communityFilter: communityFilterProp,
+  onColorModeChange,
+  onCommunityFilterChange,
 }: KnowledgeGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -90,6 +123,27 @@ export default function KnowledgeGraph({
   edgesRef.current = edges;
   incrementalRef.current = incremental;
 
+  // Colour / filtering by community. Props preferred; fall back to local state
+  // so the component stays usable standalone.
+  const hasCommunities = useMemo(
+    () => nodes.some((n) => typeof n.community === 'number'),
+    [nodes],
+  );
+  const [internalColorMode, setInternalColorMode] = useState<ColorMode>(
+    hasCommunities ? 'community' : 'doc',
+  );
+  const [internalCommunityFilter, setInternalCommunityFilter] = useState<number | null>(null);
+  const colorMode = colorModeProp ?? internalColorMode;
+  const communityFilter = communityFilterProp ?? internalCommunityFilter;
+  const setColorMode = (m: ColorMode) => {
+    setInternalColorMode(m);
+    onColorModeChange?.(m);
+  };
+  const setCommunityFilter = (c: number | null) => {
+    setInternalCommunityFilter(c);
+    onCommunityFilterChange?.(c);
+  };
+
   const docColorMap = useMemo(() => {
     const allDocIds = new Set<string>();
     nodes.forEach((n) => n.documents?.forEach((d) => allDocIds.add(d)));
@@ -101,16 +155,41 @@ export default function KnowledgeGraph({
     return map;
   }, [nodes]);
 
+  const communityColorMap = useMemo(() => {
+    const communities = new Set<number>();
+    nodes.forEach((n) => {
+      if (typeof n.community === 'number') communities.add(n.community);
+    });
+    const sorted = Array.from(communities).sort((a, b) => a - b);
+    const map: Record<number, string> = {};
+    sorted.forEach((c, i) => {
+      map[c] = COMMUNITY_COLORS[i % COMMUNITY_COLORS.length]!;
+    });
+    return map;
+  }, [nodes]);
+
+  const communitySizes = useMemo(() => {
+    const sizes = new Map<number, number>();
+    nodes.forEach((n) => {
+      if (typeof n.community === 'number')
+        sizes.set(n.community, (sizes.get(n.community) ?? 0) + 1);
+    });
+    return [...sizes.entries()].sort((a, b) => b[1] - a[1]);
+  }, [nodes]);
+
   const orphanIds = useMemo(() => computeOrphanSet(nodes, edges), [nodes, edges]);
 
   const getNodeColor = useCallback(
     (node: GraphNode): string => {
+      if (colorMode === 'community' && typeof node.community === 'number') {
+        return communityColorMap[node.community] ?? '#5a6b80';
+      }
       const docs = node.documents || [];
       if (docs.length > 1) return SHARED_COLOR;
       if (docs.length === 1 && docColorMap[docs[0]!]) return docColorMap[docs[0]!]!;
       return '#5a6b80';
     },
-    [docColorMap],
+    [docColorMap, communityColorMap, colorMode],
   );
 
   const getEdgeColor = useCallback((edge: GraphEdge): string => {
@@ -157,6 +236,9 @@ export default function KnowledgeGraph({
             docColor: getNodeColor(n),
             isOrphan: isOrphan,
             docCount: (n.documents || []).length,
+            isSeed: (n.documents || []).includes('__seed__'),
+            community: typeof n.community === 'number' ? n.community : -1,
+            communityFiltered: communityFilter !== null && n.community !== communityFilter,
           },
         };
       }),
@@ -169,6 +251,7 @@ export default function KnowledgeGraph({
           confidence: e.confidence,
           docCount: (e.documents || []).length,
           edgeColor: getEdgeColor(e),
+          interCommunity: !!e.inter_community,
         },
       })),
     ];
@@ -208,6 +291,19 @@ export default function KnowledgeGraph({
             opacity: ORPHAN_OPACITY,
             'border-width': 1,
             'border-style': 'dashed',
+          },
+        },
+        // --- Seed nodes: warm golden ring with a soft glow so they feel
+        //     bright and alive rather than clinical ---
+        {
+          selector: 'node[?isSeed]',
+          style: {
+            'border-width': 8,
+            'border-color': '#fbbf24',
+            'border-style': 'solid',
+            'overlay-padding': 8,
+            'overlay-opacity': 0.25,
+            'overlay-color': '#fbbf24',
           },
         },
         // --- Base node style ---
@@ -257,7 +353,9 @@ export default function KnowledgeGraph({
           selector: 'edge',
           style: {
             'target-arrow-shape': 'triangle',
-            'curve-style': 'bezier',
+            'curve-style': 'unbundled-bezier',
+            'control-point-distances': 20,
+            'edge-distances': 'node-position',
             label: 'data(relation)',
             'font-size': '9px',
             color: '#62748c',
@@ -265,6 +363,17 @@ export default function KnowledgeGraph({
             'text-margin-y': -8,
             'text-outline-color': NODE_OUTLINE,
             'text-outline-width': 2,
+          },
+        },
+        // --- Inter-community edges: arc far away from the straight path to
+        //     push the two communities apart visually ---
+        {
+          selector: 'edge[?interCommunity]',
+          style: {
+            'line-opacity': 0.35,
+            'line-style': 'dashed',
+            'control-point-distances': 120,
+            'control-point-weights': 0.5,
           },
         },
         // --- Selected node ---
@@ -277,18 +386,26 @@ export default function KnowledgeGraph({
             opacity: 1,
           },
         },
+        // --- Filtered-out nodes/edges: heavily dimmed so the selected
+        //     community pops ---
+        {
+          selector: '.filtered-out',
+          style: {
+            opacity: 0.06,
+          },
+        },
       ],
       layout: {
         name: 'cose',
-        idealEdgeLength: 120,
-        nodeOverlap: 180,
+        idealEdgeLength: 150,
+        nodeOverlap: 220,
         refresh: 20,
         randomize: false,
-        componentSpacing: 80,
-        nodeRepulsion: 12000,
-        edgeElasticity: 100,
+        componentSpacing: 120,
+        nodeRepulsion: 18000,
+        edgeElasticity: 120,
         nestingFactor: 1.2,
-        gravity: 0.15,
+        gravity: 0.1,
         numIter: 2000,
         animate: true,
         animationDuration: 600,
@@ -315,7 +432,7 @@ export default function KnowledgeGraph({
 
     cyRef.current = cy;
     setCyReady(true);
-  }, [nodes, edges, incremental, onNodeClick, onEdgeClick, docColorMap, orphanIds, getNodeColor, getEdgeColor]);
+  }, [nodes, edges, incremental, onNodeClick, onEdgeClick, docColorMap, orphanIds, getNodeColor, getEdgeColor, colorMode]);
 
   // Incremental: merge newly discovered nodes/edges into the live graph.
   // Runs while the analysis is in progress; existing element positions are
@@ -341,6 +458,9 @@ export default function KnowledgeGraph({
           docColor: getNodeColor(n),
           isOrphan: orphanIds.has(n.id),
           docCount: (n.documents || []).length,
+          isSeed: (n.documents || []).includes('__seed__'),
+          community: typeof n.community === 'number' ? n.community : -1,
+          communityFiltered: communityFilter !== null && n.community !== communityFilter,
         },
       })),
       ...newEdges.map((e) => ({
@@ -352,6 +472,7 @@ export default function KnowledgeGraph({
           confidence: e.confidence,
           docCount: (e.documents || []).length,
           edgeColor: getEdgeColor(e),
+          interCommunity: !!e.inter_community,
         },
       })),
     ];
@@ -388,39 +509,38 @@ export default function KnowledgeGraph({
     }
 
     // Re-apply the active filter so newly added elements obey it too.
-    if (filter !== 'all') {
+    if (filter !== 'all' || communityFilter !== null) {
       added.nodes().forEach((node) => {
-        const matches = filter === node.data('source');
-        nodetoggleClass(node, 'filtered-out', !matches);
+        const passesSource = filter === 'all' || filter === node.data('source');
+        const passesCommunity =
+          communityFilter === null || node.data('community') === communityFilter;
+        nodetoggleClass(node, 'filtered-out', !(passesSource && passesCommunity));
       });
     }
 
     setCyReady(true);
-  }, [nodes, edges, filter, orphanIds, getNodeColor, getEdgeColor]);
+  }, [nodes, edges, filter, orphanIds, getNodeColor, getEdgeColor, communityFilter]);
 
-  // Apply filter
+  // Apply visibility filters (by source and by community) to hidden elements.
   useEffect(() => {
     if (!cyRef.current) return;
     const cy = cyRef.current;
 
-    if (filter === 'all') {
-      cy.elements().removeClass('filtered-out');
-      return;
-    }
-
     cy.nodes().forEach((node) => {
-      const source = node.data('source');
-      const matches = filter === source;
-      nodetoggleClass(node, 'filtered-out', !matches);
+      const passesSource = filter === 'all' || filter === node.data('source');
+      const passesCommunity =
+        communityFilter === null || node.data('community') === communityFilter;
+      nodetoggleClass(node, 'filtered-out', !(passesSource && passesCommunity));
     });
 
-    // Also dim edges connected to filtered-out nodes
+    // Also dim edges connected to filtered-out nodes; inter-community edges are
+    // otherwise preserved (only visually softened below).
     cy.edges().forEach((edge) => {
       const src = edge.source().hasClass('filtered-out');
       const tgt = edge.target().hasClass('filtered-out');
       nodetoggleClass(edge, 'filtered-out', src || tgt);
     });
-  }, [filter]);
+  }, [filter, communityFilter]);
 
   // Pulse/highlight a node by id (e.g. when a searched entity is found or
   // added). The centred node flashes (border/halo) a few times; neighbours
@@ -518,31 +638,82 @@ export default function KnowledgeGraph({
         </button>
       </div>
 
-      {/* Inline legend */}
-      <div className="absolute bottom-3 left-3 glass-chip rounded-xl px-3 py-2.5 text-[10px] space-y-1.5">
-        <div className="data-label mb-1">field legend</div>
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-3 h-3 rounded-full" style={{ background: SHARED_COLOR, border: '2px solid ' + SHARED_COLOR }} />
-          <span className="text-[var(--color-text-secondary)]">Shared (2+ papers)</span>
-        </div>
+      {/* Inline legend + community controls */}
+      <div className="absolute bottom-3 left-3 glass-chip rounded-xl px-3 py-2.5 text-[10px] space-y-1.5 max-h-[70%] overflow-y-auto">
+        {hasCommunities ? (
+          <>
+            <div className="data-label mb-1">communities</div>
+
+            {/* Mode toggle: colour by community vs by document */}
+            <div className="flex items-center gap-1 mb-1">
+              <button
+                onClick={() => setColorMode('community')}
+                className={`px-2 py-0.5 rounded-md transition-colors ${
+                  colorMode === 'community'
+                    ? 'bg-[var(--color-surface-3)] text-[var(--color-text)]'
+                    : 'text-[var(--color-text-faint)] hover:text-[var(--color-text-secondary)]'
+                }`}
+              >
+                by community
+              </button>
+              <button
+                onClick={() => setColorMode('doc')}
+                className={`px-2 py-0.5 rounded-md transition-colors ${
+                  colorMode === 'doc'
+                    ? 'bg-[var(--color-surface-3)] text-[var(--color-text)]'
+                    : 'text-[var(--color-text-faint)] hover:text-[var(--color-text-secondary)]'
+                }`}
+              >
+                by paper
+              </button>
+            </div>
+
+            {/* Community colour swatches + click to isolate */}
+            <div className="space-y-0.5">
+              {communitySizes.map(([c, size]) => (
+                <button
+                  key={c}
+                  onClick={() => setCommunityFilter(communityFilter === c ? null : c)}
+                  className={`flex items-center gap-2 w-full text-left rounded-md px-1 py-0.5 transition-colors ${
+                    communityFilter === c
+                      ? 'bg-[var(--color-surface-3)]'
+                      : 'hover:bg-[var(--color-surface-3)]/50'
+                  }`}
+                  title={communityFilter === c ? 'Show all communities' : 'Isolate this community'}
+                >
+                  <span
+                    className="inline-block w-3 h-3 rounded-full shrink-0 border"
+                    style={{ background: communityColorMap[c], borderColor: NODE_OUTLINE }}
+                  />
+                  <span className="text-[var(--color-text-secondary)]">
+                    Community {c} <span className="text-[var(--color-text-faint)]">· {size}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {communityFilter !== null && (
+              <button
+                onClick={() => setCommunityFilter(null)}
+                className="text-[var(--color-primary)] hover:underline mt-0.5"
+              >
+                clear community filter
+              </button>
+            )}
+          </>
+        ) : null}
+
+        {/* Node / edge cues that are independent of the colour mode */}
         <div className="flex items-center gap-2">
           <span
-            className="inline-block w-3 h-3 rounded-full"
-            style={{ background: DOC_COLOR_GRADIENT, border: '2px solid ' + NODE_OUTLINE }}
+            className="inline-block w-3 h-3 shrink-0 rounded-full"
+            style={{ background: '#5a6b80', border: '4px solid #fbbf24', boxShadow: '0 0 6px #fbbf24' }}
           />
-          <span className="text-[var(--color-text-secondary)]">Unique to paper — a color per paper</span>
+          <span className="text-[var(--color-text-secondary)]">In the seed paper</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-3 h-3 rounded-full border border-dashed" style={{ background: '#5a6b80', opacity: ORPHAN_OPACITY }} />
-          <span className="text-[var(--color-text-secondary)]">Orphan — no edges</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-5 h-0.5 rounded" style={{ background: SHARED_EDGE_COLOR }} />
-          <span className="text-[var(--color-text-secondary)]">Shared edge</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-5 h-0.5 rounded" style={{ background: EDGE_COLOR }} />
-          <span className="text-[var(--color-text-secondary)]">Unique edge</span>
+        <div className="flex items-center gap-2 pt-0.5">
+          <span className="inline-block w-5 h-0.5 rounded border-t-2 border-dashed" style={{ borderColor: EDGE_COLOR, opacity: 0.5 }} />
+          <span className="text-[var(--color-text-secondary)]">Inter-community edge (dimmed)</span>
         </div>
       </div>
     </div>

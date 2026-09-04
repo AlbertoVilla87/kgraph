@@ -25,6 +25,7 @@ from kgraph.discovery.citation_graph import (
     unload_ollama,
 )
 from kgraph.extractors.gliner import GLiNERGraph
+from kgraph.graph.community import detect_communities, summarize_communities
 from kgraph.graph.config import build_pipeline_config, load_pipeline_config
 from kgraph.graph.models import RawDocument
 from kgraph.segmentation.extractor import SegmentedGraphExtractor
@@ -38,6 +39,7 @@ class CitationGraphResult:
     graph: GLiNERGraph
     node_classifications: Dict[str, str]
     discovery: CitationDiscoveryResult
+    community_summary: dict = field(default_factory=dict)
 
 
 class CitationAssembly:
@@ -159,6 +161,13 @@ class CitationAssembly:
         # 5. Add metadata (year, type) to nodes
         self._enrich_nodes(kg, result, classifications)
 
+        # 6. Detect communities (Louvain) and annotate nodes/edges in place.
+        node_to_community = detect_communities(
+            kg.graph,
+            resolution=self._community_resolution(base_config),
+        )
+        community_summary = summarize_communities(kg.graph, node_to_community)
+
         log.info(
             "Graph built: %d entities, %d relations (%d core, %d seed-only, %d refs-only)",
             kg.graph.number_of_nodes(),
@@ -167,12 +176,23 @@ class CitationAssembly:
             sum(1 for v in classifications.values() if v == "seed-only"),
             sum(1 for v in classifications.values() if v == "refs-only"),
         )
+        log.info(
+            "Community detection: %d communities, %s",
+            community_summary["total"],
+            [f"#{c['community']}({c['size']})" for c in community_summary["communities"]],
+        )
 
         return CitationGraphResult(
             graph=kg,
             node_classifications=classifications,
             discovery=result,
+            community_summary=community_summary,
         )
+
+    def _community_resolution(self, config) -> float:
+        """Community resolution from config, defaulting to 1.0 when absent."""
+        resolution = getattr(getattr(config, "community", None), "resolution", None)
+        return float(resolution) if resolution else 1.0
 
     def _all_docs(
         self, seed_doc: RawDocument, ref_docs: List[RawDocument]
