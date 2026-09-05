@@ -135,7 +135,18 @@ export default function KnowledgeGraph({
   const [internalCommunityFilter, setInternalCommunityFilter] = useState<number | null>(null);
   const colorMode = colorModeProp ?? internalColorMode;
   const communityFilter = communityFilterProp ?? internalCommunityFilter;
+  // The initial inline build shows no communities (they are computed at the end
+  // of the analysis), so the mode starts as "by paper". Once communities arrive
+  // we switch to "by community" automatically; only an explicit user choice
+  // overrides that default.
+  const userPickedMode = useRef(false);
+  useEffect(() => {
+    if (hasCommunities && !userPickedMode.current) {
+      setInternalColorMode('community');
+    }
+  }, [hasCommunities]);
   const setColorMode = (m: ColorMode) => {
+    userPickedMode.current = true;
     setInternalColorMode(m);
     onColorModeChange?.(m);
   };

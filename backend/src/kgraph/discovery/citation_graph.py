@@ -43,13 +43,34 @@ log = logging.getLogger(__name__)
 # Pydantic models for Qwen structured output
 # ---------------------------------------------------------------------------
 
+class ConceptItem(BaseModel):
+    """A single concept with its canonical (deduplicated) form.
+
+    ``concept`` is the term as it appears in the citing context (e.g. ``LLMs``);
+    ``canonical`` is the preferred, expanded form that all surface variants
+    should collapse into (e.g. ``Large Language Model``). Qwen resolves the
+    acronym/paraphrase equivalence here so downstream labels and extracted
+    entities share one canonical node per real concept.
+    """
+    concept: str = Field(
+        description="The concept as it appears in the context, max 3 words"
+    )
+    canonical: str = Field(
+        description=(
+            "Canonical/expanded form that this concept collapses into across the "
+            "whole corpus: expand acronyms (LLMs -> Large Language Model), pick one "
+            "spelling, normalize plural/singular. Use the most common full form."
+        )
+    )
+    type: str = Field(
+        description="Semantic type (e.g. 'summarization', 'graph structure', 'language models')"
+    )
+
+
 class RefInsights(BaseModel):
     """Structured output from Qwen for a single reference."""
-    concepts: List[str] = Field(
-        description="Key concepts this citing context highlights, max 3 words each"
-    )
-    types: List[str] = Field(
-        description="Semantic type for each concept (e.g. 'summarization', 'graph structure', 'language models')"
+    concepts: List[ConceptItem] = Field(
+        description="Key concepts this citing context highlights, each with its canonical form"
     )
     relations: List[str] = Field(
         description="Short relation phrases between concepts, e.g. 'outperforms', 'extends'"
@@ -64,6 +85,10 @@ class CitationDiscoveryResult(BaseModel):
     concept_type_map: Dict[str, str]
     bibliography: List[BibliographyEntry]
     insights: Dict[str, RefInsights]
+    canonical_map: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Surface form → canonical form map across all references",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -192,10 +217,16 @@ PROMPT_TEMPLATE = (
     '({surname}, {year}).\n\n'
     'Citing context from the seed paper:\n"""\n{context}\n"""\n\n'
     'Reference bibliography entry:\n"""\n{entry}\n"""\n\n'
-    'List the key CONCEPTS (max 3 words each), their SEMANTIC TYPE '
-    '(e.g. "summarization", "graph structure", "language models"), '
-    'and the RELATIONS (short verb phrases, max 3 words) '
-    'that this citing context highlights.\n/no_think'
+    'List the key CONCEPTS (max 3 words each) this citing context highlights. '
+    'For every concept, ALSO give its CANONICAL form: the preferred, expanded '
+    'name it should collapse into across the whole corpus — expand acronyms '
+    '(e.g. "LLMs" -> "Large Language Model"), pick a single consistent '
+    'spelling/tense, and normalize plural/singular. Each concept gets a '
+    'SEMANTIC TYPE (e.g. "summarization", "graph structure", "language '
+    'models").\n'
+    'Also list the RELATIONS (short verb phrases, max 3 words).\n'
+    'Return JSON matching the RefInsights schema (concepts: {{concept, '
+    'canonical, type}}[]).\n/no_think'
 )
 
 
@@ -250,6 +281,29 @@ def _normalize_label(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+def build_canonical_map(insights: Dict[str, RefInsights]) -> Dict[str, str]:
+    """Build surface form → canonical form map from Qwen's per-doc concepts.
+
+    Qwen already reports each concept's canonical form during discovery (no
+    extra LLM call), so this aggregates them into a single lookup table that
+    downstream entity extraction can apply to unify surface variants
+    (``llms`` → ``large language model``). Canonical keys map to themselves so
+    lookups are idempotent.
+    """
+    from kgraph.extractors.normalization import canonical
+
+    surface_to_canonical: Dict[str, str] = {}
+    for ins in insights.values():
+        for item in ins.concepts:
+            surface = canonical(item.concept)
+            canon = canonical(item.canonical)
+            if not surface or not canon:
+                continue
+            surface_to_canonical[surface] = canon
+            surface_to_canonical[canon] = canon
+    return surface_to_canonical
+
+
 def aggregate_taxonomy(
     insights: Dict[str, RefInsights],
     top_concepts: int = 15,
@@ -257,6 +311,10 @@ def aggregate_taxonomy(
     stopwords: set[str] | None = None,
 ) -> Tuple[List[str], List[str], Dict[str, str]]:
     """Aggregate Qwen outputs into global entity/relation labels.
+
+    Concepts are grouped by their canonical form (assigned by Qwen during
+    discovery), so surface variants like ``LLMs`` and ``Large Language Model``
+    collapse into one entity label.
 
     Returns:
         (entity_labels, relation_labels, concept_type_map)
@@ -269,19 +327,17 @@ def aggregate_taxonomy(
     type_votes: Dict[str, Counter] = {}
 
     for ins in insights.values():
-        norm_concepts = {_normalize_label(c) for c in ins.concepts} - stopwords - {""}
+        # Group by canonical form; fall back to the raw concept string when
+        # canonical is empty.
+        for item in ins.concepts:
+            canonical_label = _normalize_label(item.canonical or item.concept)
+            if not canonical_label or canonical_label in stopwords:
+                continue
+            concept_counter[canonical_label] += 1
+            type_votes.setdefault(canonical_label, Counter()).update([item.type])
+
         norm_relations = {_normalize_label(r) for r in ins.relations} - stopwords - {""}
-
-        concept_counter.update(norm_concepts)
         relation_counter.update(norm_relations)
-
-        # Vote on the type for each concept
-        for concept, ctype in zip(ins.concepts, ins.types):
-            nc = _normalize_label(concept)
-            if nc and nc not in stopwords:
-                if nc not in type_votes:
-                    type_votes[nc] = Counter()
-                type_votes[nc].update([ctype])
 
     entity_labels = [c for c, _ in concept_counter.most_common(top_concepts) if c]
     relation_labels = [r for r, _ in relation_counter.most_common(top_relations) if r]
@@ -310,6 +366,7 @@ class CitationDiscovery:
         self.citation_cfg = config.citation
         self.stopwords = get_stopwords(
             source=self.citation_cfg.stopwords_source,
+            lang=self.citation_cfg.stopwords_lang,
             extra=self.citation_cfg.stopwords or None,
         )
 
@@ -385,10 +442,15 @@ class CitationDiscovery:
         seed_ents: set[str] = set()
         seed_rels: set[str] = set()
 
+        canonical_map = build_canonical_map(insights)
+
         for rid, ins in insights.items():
-            doc_ents = list({_normalize_label(c) for c in ins.concepts} - self.stopwords - {""})
+            doc_ents = {
+                _normalize_label(item.canonical or item.concept)
+                for item in ins.concepts
+            } - self.stopwords - {""}
             doc_rels = list({_normalize_label(r) for r in ins.relations} - self.stopwords - {""})
-            per_doc_labels[rid] = (doc_ents or entity_labels, doc_rels or relation_labels)
+            per_doc_labels[rid] = (list(doc_ents) or entity_labels, doc_rels or relation_labels)
             seed_ents.update(doc_ents)
             seed_rels.update(doc_rels)
 
@@ -404,4 +466,5 @@ class CitationDiscovery:
             concept_type_map=concept_type_map,
             bibliography=bibliography,
             insights=insights,
+            canonical_map=canonical_map,
         )
