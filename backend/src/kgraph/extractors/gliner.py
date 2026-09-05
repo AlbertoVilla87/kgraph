@@ -145,7 +145,12 @@ class EntityRelationExtractor:
 class GLiNERGraph(EntityRelationExtractor):
     """In-memory knowledge graph using NetworkX."""
 
-    def __init__(self, my_config: PipelineConfig, model=None):
+    def __init__(
+        self,
+        my_config: PipelineConfig,
+        model=None,
+        canonical_map: Optional[Dict[str, str]] = None,
+    ):
         super().__init__(my_config, model=model)
         self.graph = nx.MultiDiGraph()
         self.entity_text_index: Dict[str, List[str]] = {}
@@ -162,6 +167,7 @@ class GLiNERGraph(EntityRelationExtractor):
             if merging.enabled
             else None
         )
+        self.canonical_map = canonical_map or {}
         
     def build(self, documents: List[RawDocument]):
         """Build graph"""
@@ -181,11 +187,17 @@ class GLiNERGraph(EntityRelationExtractor):
         Entities are deduplicated by normalized text: the same span decoded
         with different labels (e.g. "CoT RL" as ``CoT RL`` and ``CoT RL model``)
         is merged into a single node, keeping the best score and accumulating
-        mentions. When ``entity_merging`` is enabled, near-duplicates are also
-        collapsed via canonical form (leading articles, whitespace) and, when
-        still unmatched, via embedding similarity.
+        mentions. Surface variants resolved by Qwen during discovery
+        (``canonical_map``, e.g. "LLMs" → "Large Language Model") are renamed
+        to their canonical form before dedup. When ``entity_merging`` is
+        enabled, near-duplicates are also collapsed via canonical form (leading
+        articles, whitespace) and, when still unmatched, via embedding
+        similarity.
         """
-        normalized = canonical(entity.text)
+        canonical_text = entity.text
+        if self.canonical_map:
+            canonical_text = self.canonical_map.get(canonical(entity.text), entity.text)
+        normalized = canonical(canonical_text)
         existing = self.entity_text_index.get(normalized)
 
         if existing is None and self.merger is not None:
@@ -203,7 +215,7 @@ class GLiNERGraph(EntityRelationExtractor):
 
         self.graph.add_node(
             entity.id,
-            text=entity.text,
+            text=canonical_text,
             entity_type=entity.entity_type,
             score=entity.score,
             mentions=entity.mentions,
