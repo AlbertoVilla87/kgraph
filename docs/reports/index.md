@@ -34,4 +34,4 @@ What becomes easier, harder, or what we now accept as a trade-off.
 
 - Discovery is deterministic and LLM-free because a 0.6b model hallucinated evidence — see [Exp 02](../experiments/exp_02_qwen_versus_keybert.ipynb) and [Discovery](../architecture/discovery.md).
 - Segmentation keeps a structured `DoclingDocument` through the pipeline to enable section-aware chunking — see [Segmentation](../architecture/segmentation.md).
-- Cross-document novelty is currently lexical (canonical/containment merging) — see [Corpus](../architecture/corpus.md).
+- **Removed feature** — the multi-document corpus graph (common/unique view) was deleted with the legacy topic-guided stack; its timing report ([notebook](corpus_timing.ipynb)) is preserved as the historical record.

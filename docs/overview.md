@@ -52,17 +52,11 @@ The user-facing loop is powerful and cheap: because GLiNER is zero-shot, **any t
 
 The "café recalentado" case — a post using different vocabulary to say something that's been said 50 times — shows up as **high structural similarity** (graph/WL-kernel level) even when **lexical similarity is low** (plain text embeddings). That's the gap this approach is meant to close: plain-text comparison alone misses it.
 
-## Multi-document view of a corpus
-
-`uv run corpus-demo` in `backend/` builds a cross-document graph: every node/edge is labeled **common** (present in ≥2 documents, green) or **unique** to one document (originality view):
-
-![Multi-document corpus graph](assets/multi_graph.jpg)
-
 ## Constraints / design choices
 
-- No paid per-token LLM APIs in the pipeline; local/open models only (GLiNER — Apache 2.0; spaCy — MIT)
-- Labels (both entity and relation types) are discovered from the data via deterministic dependency parsing, not hand-defined
-- Discovery is deterministic and LLM-free (a small local model hallucinated evidence, so it was dropped from discovery)
+- No paid per-token LLM APIs in the pipeline; local/open models only (GLiNER — Apache 2.0; Qwen3 0.6b — Apache 2.0; docling — MIT)
+- Labels (both entity and relation types) are discovered from the seed paper's references by a small local model (Qwen3), not hand-defined
+- Discovery is citation-guided: Qwen reads each citing context and derives concepts, types, and relations, aggregated into the taxonomy GLiNER extracts with — local, deterministic per seed, and free
 - One accumulated graph per topic, growing over time as new content is processed — the comparison only gets more meaningful as the corpus grows
 
 ## Continue reading

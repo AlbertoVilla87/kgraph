@@ -2,7 +2,11 @@
 # Usage:
 #   cp .env.example .env    # edit with your values
 #   docker compose up -d    # start backend + nginx
-#   docker compose up -d --profile citation  # + Ollama for citation mode
+#   docker compose up -d --profile citation  # + Ollama
+# NOTE: analysis requires Ollama (Qwen3). It is gated behind the
+# `citation` profile, but WITHOUT it the backend serves a healthy UI
+# yet every analysis job fails. Always deploy with the profile:
+#   docker compose up -d --profile citation
 # ───────────────────────────────────────────────────────────────────
 
 services:
@@ -28,8 +32,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Optional: Ollama for citation-guided discovery (Qwen3 0.6b)
-  # Activate with: docker compose up -d --profile citation
+  # Ollama for citation-guided discovery (Qwen3 0.6b) — REQUIRED for analysis.
+  # Gated behind the `citation` profile so basic infra can start without it,
+  # but the API's only pipeline needs it. Activate with:
+  #   docker compose up -d --profile citation
   ollama:
     image: ollama/ollama:latest
     container_name: astrolabe-ollama

@@ -42,7 +42,10 @@ class RawDocument:
 
 `docling_doc` holds the structured `DoclingDocument` when the source is parsed fresh (needed by the section-aware `Segmenter`); re-read cached `.md` files don't have one.
 
-Discovery-side schemas (`discovery/schemas.py`, Pydantic):
+Discovery-side schemas:
+
+- Citation-guided (`kgraph/discovery/citation_graph.py`, Pydantic) — `ConceptItem` (concept, canonical, type) and `RefInsights` (concepts, relations): the structured output Qwen must produce.
+- Legacy topic-guided (`discovery/schemas.py`, Pydantic):
 
 ```python
 class DiscoveredRelation(BaseModel):
@@ -68,23 +71,18 @@ class DiscoveryResult(BaseModel):
 | `entities` / `relations` | | (mortgage schema) | static fallback labels; overridden by discovery |
 | `thresholds` | `entity` / `relation` | `0.5` / `0.5` | minimum GLiNER score to keep a result |
 | `ner` | `name` | `models/gliner-relex-large-v0.5` | local GLiNER model path |
-| `keyword_extractor` | `name` | `models/all-MiniLM-L6-v2` | local embedding model path |
-| | `diversity` | `0.7` | KeyBERT maxsum diversity |
-| | `stop_words` | `english` | KeyBERT stop words |
-| | `n_grams` | `[1, 2]` | keyphrase n-gram range |
-| | `adaptive.*` | see [Discovery](discovery.md) | adaptive seed-count tuning |
-| `discovery.*` | | see [Discovery](discovery.md) | spaCy model, BFS depth, skip headings, ... |
+| `citation.*` | | see [Discovery](discovery.md) | Qwen3 model/endpoint, max refs, taxonomy sizes, stop word source |
+| `llm` | `name` | `ollama/qwen3:0.6b` | the same Qwen3 model used by citation discovery (`citation.ollama_model`) |
+| `discovery.*` | | see [Discovery](discovery.md) | [legacy] topic-guided: BFS depth, skip headings, determiners, ... |
 | `entity_merging.*` | | see [Assembly](assembly.md) | near-duplicate entity merge |
 | `segmentation.*` | | see [Segmentation](segmentation.md) | token budget, overlap, workers |
-| `llm` | `name` | `ollama/qwen3:0.6b` | used only by `qwen-demo` |
 
 ## Module → configuration mapping
 
 | Concern | Module | Config block |
 | --- | --- | --- |
 | Sources | `ingestion/` | `data_source` |
-| Seeds | `extractors/key_bert.py` | `keyword_extractor` |
-| Relations + BFS | `discovery/dependency_relations.py`, `discovery/topic_graph.py` | `discovery` |
-| Taxonomy + merge | `discovery/assembly.py`, `extractors/gliner.py`, `extractors/normalization.py` | `entity_merging`, `thresholds` |
+| Citation discovery (Qwen taxonomy) | `discovery/citation_graph.py`, `discovery/bibliography.py` | `citation`, `llm` |
+| Assembly + classification | `discovery/citation_assembly.py`, `extractors/gliner.py`, `extractors/normalization.py` | `entity_merging`, `thresholds` |
 | Segmentation | `segmentation/` | `segmentation` |
-| (Optional) LLM route | `llms/` | `llm` |
+| [legacy] Seeds + topic graph | — (modules removed in the model cleanup) | `discovery` |

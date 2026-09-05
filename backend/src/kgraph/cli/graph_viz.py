@@ -115,7 +115,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Render a graph JSON as a standalone HTML visualization."
     )
-    parser.add_argument("input", help="Path to the graph JSON (from assembly-demo --output).")
+    parser.add_argument("input", help="Path to the graph JSON (from citation-demo --output).")
     parser.add_argument(
         "--output",
         default=None,

@@ -39,7 +39,6 @@ nav:
       - Discovery: architecture/discovery.md
       - Assembly: architecture/assembly.md
       - Segmentation: architecture/segmentation.md
-      - Corpus & multi-document: architecture/corpus.md
       - Data model & configuration: architecture/data-model.md
       - Runtime & API architecture: architecture/runtime.md
       - Application architecture: architecture/app-architecture.md

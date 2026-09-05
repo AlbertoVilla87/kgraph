@@ -44,7 +44,7 @@
         <mxCell id="c12" value="CORPUS — quick | deep&amp;#10;abstracts | full-text + segment" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F1F6FA;strokeColor=#1E88E5;fontColor=#202020;verticalAlign=bottom;align=center;fontSize=9;fontStyle=0;" >
           <mxGeometry x="701" y="392" width="140" height="64" as="geometry"/>
         </mxCell>
-        <mxCell id="c13" value="EXTRACTION&amp;#10;GLiNER · MiniLM · spaCy" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#EEF7F5;strokeColor=#009485;fontColor=#202020;verticalAlign=bottom;align=center;fontSize=9;fontStyle=0;" >
+        <mxCell id="c13" value="EXTRACTION&amp;#10;GLiNER · canonicalization" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#EEF7F5;strokeColor=#009485;fontColor=#202020;verticalAlign=bottom;align=center;fontSize=9;fontStyle=0;" >
           <mxGeometry x="859" y="392" width="140" height="64" as="geometry"/>
         </mxCell>
         <mxCell id="c14" value="MERGE → topics · stats&amp;#10;writes /result" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#F8F8F8;strokeColor=#C9C9C9;fontColor=#202020;verticalAlign=bottom;align=center;fontSize=9;fontStyle=0;" >

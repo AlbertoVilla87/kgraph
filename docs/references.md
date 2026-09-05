@@ -8,17 +8,14 @@
 
 | Library | Role | Link |
 | --- | --- | --- |
-| KeyBERT | keyword / keyphrase extraction (seeds) | https://maartengr.github.io/KeyBERT/ |
 | GLiNER | zero-shot NER + relation extraction | https://github.com/urchade/GLiNER |
-| spaCy | dependency parsing for relation discovery | https://spacy.io/ |
+| Qwen3 0.6b (via Ollama) | citation discovery — concepts, types, relations taxonomy, canonicalization | https://ollama.com/library/qwen3 |
+| LiteLLM | unified LLM interface (Qwen route, structured output) | https://docs.litellm.ai/ |
+| Ollama | local LLM runner (required for citation discovery) | https://ollama.com/ |
 | docling | document → structured `DoclingDocument` (layout, tables, markdown) | https://ds4sd.github.io/docling/ |
 | docling-core | `HierarchicalChunker` (section-aware chunks) | https://pypi.org/project/docling-core/ |
 | networkx | the graph data structure (`networkx.MultiDiGraph`) | https://networkx.org/ |
 | vis-network | interactive HTML graph rendering (`graph-viz`) | https://visjs.github.io/vis-network/ |
-| kneed | knee/elbow detection for the adaptive keyword count | https://github.com/arvkevi/kneed |
-| LiteLLM | unified LLM interface (Qwen route, `qwen-demo`) | https://docs.litellm.ai/ |
-| Ollama | local LLM runner (optional, `qwen-demo`) | https://ollama.com/ |
-| sentence-transformers | embedding model for KeyBERT and merging (`all-MiniLM-L6-v2`) | https://www.sbert.net/ |
 | HuggingFace Hub CLI | `hf download` for local model cache | https://huggingface.co/docs/huggingface_hub/ |
 
 ## Sources & data
@@ -27,8 +24,7 @@
 | --- | --- |
 | arXiv API | https://arxiv.org/help/api |
 | `urchade/gliner_multi-v2.1` (relex-large, relation extraction) | https://huggingface.co/urchade/gliner_multi-v2.1 |
-| `sentence-transformers/all-MiniLM-L6-v2` | https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2 |
-| `en_core_web_sm` (spaCy model) | https://github.com/explosion/spacy-models/releases |
+| `ollama/qwen3:0.6b` (citation taxonomy) | https://ollama.com/library/qwen3 |
 | `docling-project/docling-layout-heron`, `docling-project/docling-models` | https://huggingface.co/docling-project |
 
 ## Concepts

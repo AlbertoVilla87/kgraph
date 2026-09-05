@@ -1,8 +1,8 @@
 """Community detection via Louvain, agnostic of how the graph was built.
 
 This module is deliberately detached from any specific pipeline. It takes any
-``networkx`` graph (the citation graph from ``CitationAssembly``, the corpus
-graph from ``CorpusGraphBuilder``, a ``GLiNERGraph``, …), converts it to the
+``networkx`` graph (the citation graph from ``CitationAssembly``, a
+``GLiNERGraph``, …), converts it to the
 undirected single-edge form Louvain expects, runs
 ``networkx.algorithms.community.louvain_communities``, and annotates each node
 in the *original* graph with its community plus per-community metadata.

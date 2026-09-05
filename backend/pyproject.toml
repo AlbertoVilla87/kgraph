@@ -14,17 +14,13 @@ dependencies = [
     "httpx>=0.28.0",
     "ipykernel>=7.3.0",
     "jupyter>=1.1.1",
-    "keybert>=0.9.0",
-    "kneed>=0.8.5",
     "litellm>=1.96.0",
     "matplotlib>=3.9",
     "network>=0.1",
     "networkx>=3.6.1",
     "numpy>=2.5.1",
-    "pytextrank>=3.3.0",
     "pydantic>=2.13.4",
     "pyyaml",
-    "spacy>=3.7",
     "streamlit>=1.59.2",
     "tqdm>=4.66",
     "uvicorn>=0.32.0",
@@ -32,14 +28,9 @@ dependencies = [
 ]
 [project.scripts]
 gliner-demo = "kgraph.cli.gliner_graph_demo:main"
-kbert-demo = "kgraph.cli.key_bert_demo:main"
 qwen-demo = "kgraph.cli.qwen_demo:main"
-discovery-demo = "kgraph.cli.topic_discovery_demo:main"
-assembly-demo = "kgraph.cli.assembly_demo:main"
-segmented-demo = "kgraph.cli.segmented_demo:main"
 graph-viz = "kgraph.cli.graph_viz:main"
 arxiv-demo = "kgraph.cli.arxiv_demo:main"
-corpus-demo = "kgraph.cli.corpus_demo:main"
 citation-demo = "kgraph.cli.citation_demo:main"
 serve = "kgraph.api.main:app"
 [build-system]

@@ -24,7 +24,7 @@
 <rect x="701" y="392" width="140" height="64" rx="5.12" fill="#F1F6FA" stroke="#1E88E5" stroke-width="2" />
 <text x="771" text-anchor="middle" font-size="9" fill="#202020"><tspan x="771" text-anchor="middle" y="424" font-weight="600">CORPUS — quick | deep</tspan><tspan x="771" text-anchor="middle" y="433">abstracts | full-text + segment</tspan></text>
 <rect x="859" y="392" width="140" height="64" rx="5.12" fill="#EEF7F5" stroke="#009485" stroke-width="2" />
-<text x="929" text-anchor="middle" font-size="9" fill="#202020"><tspan x="929" text-anchor="middle" y="424" font-weight="600">EXTRACTION</tspan><tspan x="929" text-anchor="middle" y="433">GLiNER · MiniLM · spaCy</tspan></text>
+<text x="929" text-anchor="middle" font-size="9" fill="#202020"><tspan x="929" text-anchor="middle" y="424" font-weight="600">EXTRACTION</tspan><tspan x="929" text-anchor="middle" y="433">GLiNER · canonicalization</tspan></text>
 <rect x="1017" y="392" width="140" height="64" rx="5.12" fill="#F8F8F8" stroke="#C9C9C9" stroke-width="2" />
 <text x="1087" text-anchor="middle" font-size="9" fill="#202020"><tspan x="1087" text-anchor="middle" y="424" font-weight="600">MERGE → topics · stats</tspan><tspan x="1087" text-anchor="middle" y="433">writes /result</tspan></text>
 <rect x="859" y="474" width="298" height="64" rx="5.12" fill="#FFFFFF" stroke="#C0C0C0" stroke-width="2" />

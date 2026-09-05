@@ -66,7 +66,7 @@ async function main() {
   const input = box(385, 392, 140, 64, 'INPUT&#10;topic | seed_url', '#F1F6FA', '#1E88E5', { size: 9, bold: true })
   const disc = box(543, 392, 140, 64, 'DISCOVERY&#10;topic | citation', '#F1F6FA', '#1E88E5', { size: 9, bold: true })
   const corpus = box(701, 392, 140, 64, 'CORPUS — quick | deep&#10;abstracts | full-text + segment', '#F1F6FA', '#1E88E5', { size: 9, bold: true })
-  const extract = box(859, 392, 140, 64, 'EXTRACTION&#10;GLiNER · MiniLM · spaCy', '#EEF7F5', '#009485', { size: 9, bold: true })
+  const extract = box(859, 392, 140, 64, 'EXTRACTION&#10;GLiNER · canonicalization', '#EEF7F5', '#009485', { size: 9, bold: true })
   const merge = box(1017, 392, 140, 64, 'MERGE → topics · stats&#10;writes /result', '#F8F8F8', '#C9C9C9', { size: 9, bold: true })
 
   const models = box(859, 474, 298, 64, 'MODEL CACHE — serialized load&#10;threading.Lock · shared across runs', '#FFFFFF', '#C0C0C0', { size: 9 })

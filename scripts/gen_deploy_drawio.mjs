@@ -95,7 +95,7 @@ async function main() {
   icon(920, 322, 26, 26, 'nginx', icons)
   icon(952, 323, 24, 24, 'react', icons)
 
-  const backend = box(480, 388, 540, 108, 'backend — FastAPI (uvicorn)&#10;GLiNER entities · MiniLM embeddings · spaCy relations&#10;models baked · torch on CPU', '#EEF7F5', '#009485', { size: 10, bold: true })
+  const backend = box(480, 388, 540, 108, 'backend — FastAPI (uvicorn)&#10;GLiNER entities · Qwen canonicalization&#10;models baked · torch on CPU', '#EEF7F5', '#009485', { size: 10, bold: true })
   icon(920, 396, 26, 26, 'fastapi', icons)
 
   const ollama = box(480, 520, 540, 46, 'Ollama — Qwen3 0.6b&#10;citation mode (optional)', '#F7F7F8', '#737373', { dash: true, size: 10, shift: 22 })

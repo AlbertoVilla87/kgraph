@@ -1,7 +1,7 @@
 # ── Backend Dockerfile ──────────────────────────────────────────────
-# Bake models (GLiNER + MiniLM) into the image at build time.
+# Bake the GLiNER model into the image at build time.
 # HF_HUB_OFFLINE=1 at runtime — no network needed for model loads.
-# spaCy is NOT included (no longer used in the pipeline).
+# spaCy/MiniLM are NOT included (no longer used in the pipeline).
 # ───────────────────────────────────────────────────────────────────
 
 FROM python:3.12-slim AS builder
@@ -23,13 +23,10 @@ COPY backend/src/ src/
 COPY backend/configs/ configs/
 RUN uv sync --frozen --no-dev
 
-# 3. Bake models (needs `uv run` from the project venv)
+# 3. Bake the GLiNER model (needs `uv run` from the project venv)
 RUN mkdir -p models && \
     uv run hf download urchade/gliner_multi-v2.1 \
-        --local-dir models/gliner-relex-large-v0.5 && \
-    uv run hf download \
-        sentence-transformers/all-MiniLM-L6-v2 \
-        --local-dir models/all-MiniLM-L6-v2
+        --local-dir models/gliner-relex-large-v0.5
 
 # ── Runtime stage ──────────────────────────────────────────────────
 FROM python:3.12-slim
