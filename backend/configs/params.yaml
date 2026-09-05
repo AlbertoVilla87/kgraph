@@ -35,23 +35,10 @@ thresholds:
 ner:
   name: "models/gliner-relex-large-v0.5"
 
-keyword_extractor:
-  name: "models/all-MiniLM-L6-v2"
-  diversity: 0.7
-  stop_words: "english"
-  n_grams: [1, 2]
-  adaptive:
-    min_k: 2
-    max_k: 10
-    words_per_kw: 40
-    score_floor: 0.2
-    max_candidates: 5
-
 llm:
   name: "ollama/qwen3:0.6b"
 
 discovery:
-  spacy_model: "models/en_core_web_sm"
   pronouns: []
   determiners: []
   max_depth: 2
@@ -65,8 +52,6 @@ discovery:
 
 entity_merging:
   enabled: true
-  threshold: 0.85
-  model: "models/all-MiniLM-L6-v2"
 
 segmentation:
   enabled: true
@@ -82,7 +67,8 @@ citation:
   top_concepts: 15
   top_relations: 8
   max_chars: 24000
-  stopwords_source: "spacy"
+  stopwords_source: "language"
+  stopwords_lang: "en"
   stopwords: []
 
 data_source:

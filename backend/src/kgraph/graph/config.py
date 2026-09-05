@@ -51,8 +51,6 @@ class ThresholdConfig(BaseModel):
 
 class EntityMergingConfig(BaseModel):
     enabled: bool = True
-    threshold: float = 0.85
-    model: str = "models/all-MiniLM-L6-v2"
 
 class SegmentationConfig(BaseModel):
     enabled: bool = True
@@ -69,7 +67,8 @@ class CitationDiscoveryConfig(BaseModel):
     top_concepts: int = 15
     top_relations: int = 8
     max_chars: int = 24_000
-    stopwords_source: str = "spacy"
+    stopwords_source: str = "language"
+    stopwords_lang: str = "en"
     stopwords: list[str] = []
 
 class PipelineConfig(BaseModel):
@@ -78,7 +77,12 @@ class PipelineConfig(BaseModel):
     relations: list[str] = []
     thresholds: ThresholdConfig
     ner: NERConfig
-    keyword_extractor: ExtractorConfig
+    keyword_extractor: ExtractorConfig = ExtractorConfig(
+        name="",
+        stop_words="english",
+        diversity=0.7,
+        n_grams=(1, 2),
+    )
     llm: LLMConfig
     discovery: DiscoveryConfig = DiscoveryConfig()
     entity_merging: EntityMergingConfig = EntityMergingConfig()
@@ -108,8 +112,6 @@ def _resolve_model_paths(raw: dict, config_dir: Path) -> dict:
         raw["ner"]["name"] = _resolve(raw["ner"]["name"])
     if "keyword_extractor" in raw and "name" in raw["keyword_extractor"]:
         raw["keyword_extractor"]["name"] = _resolve(raw["keyword_extractor"]["name"])
-    if "entity_merging" in raw and "model" in raw["entity_merging"]:
-        raw["entity_merging"]["model"] = _resolve(raw["entity_merging"]["model"])
     if "discovery" in raw and "spacy_model" in raw["discovery"]:
         raw["discovery"]["spacy_model"] = _resolve(raw["discovery"]["spacy_model"])
 

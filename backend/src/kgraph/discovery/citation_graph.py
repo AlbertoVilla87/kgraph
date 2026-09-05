@@ -366,6 +366,7 @@ class CitationDiscovery:
         self.citation_cfg = config.citation
         self.stopwords = get_stopwords(
             source=self.citation_cfg.stopwords_source,
+            lang=self.citation_cfg.stopwords_lang,
             extra=self.citation_cfg.stopwords or None,
         )
 
