@@ -159,14 +159,7 @@ class GLiNERGraph(EntityRelationExtractor):
         self.entities = list[Entity]
         self.relations = list[Relation]
         merging = my_config.entity_merging
-        self.merger = (
-            EntityMerger(
-                threshold=merging.threshold,
-                model_path=merging.model,
-            )
-            if merging.enabled
-            else None
-        )
+        self.merger = EntityMerger() if merging.enabled else None
         self.canonical_map = canonical_map or {}
         
     def build(self, documents: List[RawDocument]):
@@ -189,10 +182,9 @@ class GLiNERGraph(EntityRelationExtractor):
         is merged into a single node, keeping the best score and accumulating
         mentions. Surface variants resolved by Qwen during discovery
         (``canonical_map``, e.g. "LLMs" → "Large Language Model") are renamed
-        to their canonical form before dedup. When ``entity_merging`` is
-        enabled, near-duplicates are also collapsed via canonical form (leading
-        articles, whitespace) and, when still unmatched, via embedding
-        similarity.
+        to their canonical form before dedup; remaining near-duplicates are
+        collapsed via canonical form (leading articles, whitespace) and token
+        containment when ``entity_merging`` is enabled.
         """
         canonical_text = entity.text
         if self.canonical_map:
