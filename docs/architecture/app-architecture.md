@@ -37,18 +37,17 @@ wrong under `--workers > 1`.
 | **In-memory state** | `analyses: dict` — status, progress, result; lost on restart |
 | **Worker thread** | `threading.Thread(target=run_analysis, daemon=True)` |
 | **pipeline (one run)** | `INPUT (seed_url) → DISCOVERY (citation) → ASSEMBLY (Qwen3 taxonomy) → EXTRACTION → MERGE` |
-| **Model cache** | Single-load lock (threading.Lock) around GLiNER / MiniLM / spaCy loads |
-| **Ollama · qwen3:0.6b** *(dashed)* | Optional LLM inference for citation discovery, over HTTP `localhost:11434` |
+| **Model cache** | Single-load lock (threading.Lock) around the GLiNER load |
+| **Ollama · qwen3:0.6b** *(dashed)* | Local LLM inference for citation discovery (required, external process), over HTTP `localhost:11434` |
 | **arXiv API / ar5iv** *(dashed)* | Optional upstream fetch for metadata / full text, over HTTPS |
 
 Two execution domains (see [runtime §2](runtime.md#2-pipeline-composition-at-runtime)):
 
-- **In-process** — the local models run inside the uvicorn worker via
-  torch / sentence-transformers; their (heavy) loads are serialized behind the
-  model-cache lock.
-- **Separate services (HTTP)** — Ollama for the LLM route and arXiv/ar5iv for
-  document retrieval; both dashed because deployment of those is out of this
-  process's scope (see [Deployment](deployment.md)).
+- **In-process** — the GLiNER model runs inside the uvicorn worker via torch;
+  its (heavy) load is serialized behind the model-cache lock.
+- **Separate services (HTTP)** — Ollama for the citation LLM route and
+  arXiv/ar5iv for document retrieval; both dashed because deployment of those is
+  out of this process's scope (see [Deployment](deployment.md)).
 
 ## Why the dashed state / thread edges
 

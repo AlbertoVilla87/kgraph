@@ -7,11 +7,10 @@ The assembled pipeline is the extraction core of a larger goal: a **state-of-the
 | Feature | Where |
 | --- | --- |
 | Local + arXiv ingestion | [Ingestion](architecture/ingestion.md) — `LocalFileSource`, `ArxivSource` (abstracts, PDF download, docling full text) |
-| Adaptive KeyBERT seeding | [Discovery](architecture/discovery.md) |
-| LLM-free topic-guided discovery (spaCy) | [Discovery](architecture/discovery.md) |
+| Citation-guided discovery (Qwen3 taxonomy) | [Discovery](architecture/discovery.md) |
+| Canonicalization + node classification (core / seed-only / refs-only) | [Assembly](architecture/assembly.md) |
 | Discovery-driven GLiNER assembly | [Assembly](architecture/assembly.md) |
 | Section-aware segmentation | [Segmentation](architecture/segmentation.md) |
-| Multi-document corpus graph + originality view | [Corpus](architecture/corpus.md) |
 
 ## Pending
 
@@ -21,7 +20,7 @@ A topic query harvests documents from IEEE and similar sources in addition to ar
 
 ### Accumulated topic graph
 
-Today each `assembly-demo` run builds a fresh graph from one corpus. The target is an **accumulated graph per topic** that persists and grows as documents are added — nodes and edges carry frequency and confidence, so the map of the field only gets more precise over time. This is the architecture solution still pending.
+Today each `citation-demo` run builds a fresh graph from one seed paper. The target is an **accumulated graph per topic** that persists and grows as documents are added — nodes and edges carry frequency and confidence, so the map of the field only gets more precise over time. This is the architecture solution still pending.
 
 ### Originality signal
 
@@ -33,7 +32,7 @@ Concepts and relations that are rare or absent in the accumulated graph are cand
 
 ### GLiNER idea check
 
-Because GLiNER is zero-shot, **any idea the user thinks of becomes a label**. The tool can then ask the corpus directly: does this idea appear in any document, and how is it connected? That is a live originality check against the state of the art — the answer is grounded in the accumulated graph, not in an LLM's guess.
+Because GLiNER is zero-shot, **any idea the user thinks of becomes a label**. The tool can then ask the accumulated graph directly: does this idea appear in any document, and how is it connected? That is a live originality check against the state of the art — the answer is grounded in the accumulated graph, not in an LLM's guess.
 
 ## Open design questions
 

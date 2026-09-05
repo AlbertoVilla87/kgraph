@@ -11,24 +11,23 @@ A tool to know the **state of the art of any topic** from the research sources t
 - **Find the gaps** — rare or absent concepts/relations are inspiration for unexplored directions.
 - **Check an idea instantly** — because GLiNER is zero-shot, any topic the user thinks of becomes a label, and we can ask whether it appears in the corpus and how it connects.
 
-The current pipeline is the **discovery-driven GLiNER assembly**: Adaptive KeyBERT seeds the topics, an LLM-free spaCy pass discovers the relations and grows the topic graph, and GLiNER extracts the final knowledge graph using exactly that discovered taxonomy — no hand-written labels.
+The current pipeline is the **citation-guided GLiNER assembly**: Qwen3 (a small local model) reads the seed paper's references and derives the concept/relation taxonomy, GLiNER extracts the final knowledge graph using exactly those labels, and nodes are canonicalized and classified core / seed-only / refs-only — no hand-written labels.
 
 ## Status
 
 Implemented:
 
-- **arXiv harvester** — topic query → abstracts or full text (PDF download + docling parsing)
-- **Adaptive KeyBERT seeding** — per document section, adaptive count via score elbow
-- **LLM-free topic-guided discovery** — spaCy dependency parsing, BFS expansion
-- **Discovery-driven GLiNER assembly** — the final knowledge graph from the discovered taxonomy
+- **arXiv harvester** — topic query → seed paper + references full text (ar5iv HTML, or PDF download + docling parsing)
+- **Citation-guided discovery** — bibliography parsing, citing-context matching, Qwen3 taxonomy (concepts, types, relations)
+- **Per-document GLiNER assembly with canonicalization** — each reference gets its own labels; entities canonicalized and merged
+- **Node classification** — core / seed-only / refs-only as an originality proxy
 - **Segmentation** — section-aware, token-bounded segments beat the 1024-token GLiNER window
-- **Multi-document corpus graph** — per-document taxonomies merged into a cross-document graph with a common/unique (originality) view
 
 Planned / designed:
 
 - **Accumulated topic graph** — one graph per topic that grows as documents are added (today each run builds a fresh graph)
 - **Originality / gap signals** — WL-kernel / embedding comparison against the accumulated graph
-- **GLiNER idea check** — ask the corpus whether a user idea exists and how it connects
+- **GLiNER idea check** — ask the accumulated graph whether a user idea exists and how it connects
 - **IEEE harvester** (and similar sources) — arXiv is implemented, others plug in as `DataSource` implementations
 
 See the [roadmap](roadmap.md) for the full picture.
@@ -55,7 +54,7 @@ kgraph/
 │   ├── src/kgraph/api/        # FastAPI REST API for frontend integration
 │   ├── experiments/           # Jupyter notebooks
 │   ├── configs/params.yaml    # pipeline configuration
-│   ├── data/                  # corpus: case_1/, case_2/, arxiv_pdfs/
+│   ├── data/                  # data: case_1/, case_2/, arxiv_pdfs/
 │   └── models/                # local models (git-ignored)
 └── frontend/                  # React + TypeScript frontend (ArXiv Graph Explorer)
     └── src/

@@ -2,7 +2,7 @@
 
 Provisiona con Terraform:
 
-1. **EC2 parada por defecto** (t3.large) con EIP, SSM y user-data que instala Docker.
+1. **EC2 parada por defecto** (t3.xlarge) con EIP, SSM y user-data que instala Docker.
 2. **Función Lambda "wake"** (`${project}-wake`, URL pública function URL) que:
    - `GET /` → enciende la VM y espera a que pase a `running`; **arma un schedule
      one-shot de EventBridge Scheduler** que la para en `auto_stop_seconds`
@@ -31,8 +31,8 @@ curl "$(terraform output -raw wake_url)?action=stop" # apaga manualmente
 
 | Componente | Coste |
 |---|---|
-| t3.large apagada | €0 |
-| t3.large encendida | ~$0.086/h |
+| t3.xlarge apagada | €0 |
+| t3.xlarge encendida | ~$0.168/h |
 | Lambda wake | ~$0 (ociosa no cobra) |
 | EIP con instancia parada | ~$3.6/mes (EIP gratis solo si la VM corre) |
 | S3 + CloudFront (PriceClass_100) | céntimos/mes |

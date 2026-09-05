@@ -4,7 +4,7 @@
 
 ### `models/` missing or a demo fails at model load
 
-The `models/` directory is git-ignored — download the models once (see [Quickstart](quickstart.md)). Paths are configured in `backend/configs/params.yaml` (`ner.name`, `keyword_extractor.name`, `discovery.spacy_model`).
+The `models/` directory is git-ignored — download the models once (see [Quickstart](quickstart.md)). Paths are configured in `backend/configs/params.yaml` (`ner.name`, `citation.ollama_model`, `citation.ollama_api_base`).
 
 ### docling can't convert PDFs / tries to reach the Hub
 
@@ -17,17 +17,17 @@ HUGGINGFACE_HUB_CACHE=models/hub uv run hf download docling-project/docling-mode
 
 ### GLiNER emits `Sentence of length N has been truncated to 1024`
 
-You hit the whole-document path (or `--no-segmentation`). The segmented extractor fixes this — make sure `segmentation.enabled: true` in `params.yaml` or run `uv run segmented-demo`.
+You hit the whole-document path (segmentation disabled). The segmented extractor fixes this — make sure `segmentation.enabled: true` in `params.yaml`.
 
 ## Running the demos
 
 ### `uv run <demo>` fails with "command not found" / module errors
 
-Make sure you are in `backend/` (the console scripts and `.venv` live there) and that `uv sync` was run. For `qwen-demo` you also need Ollama running with `qwen3:0.6b` pulled.
+Make sure you are in `backend/` (the console scripts and `.venv` live there) and that `uv sync` was run. Any demo that runs discovery (`citation-demo`, `qwen-demo`) needs Ollama with `qwen3:0.6b` pulled — `ensure_ollama()` auto-launches `ollama serve` when it is not running.
 
 ### `graph-viz` needs a graph JSON first
 
-`graph-viz` renders an existing export. Run `uv run assembly-demo` (writes `output/kg_final.json`) or `uv run corpus-demo --output-json out/g.json` first.
+`graph-viz` renders an existing export. Run `uv run citation-demo --seed <id>` (writes `output/citation_kg.json`) first.
 
 ## CodeGraph / development tooling
 
@@ -46,7 +46,5 @@ Full setup: [Development / Tooling](development.md).
 | --- | --- | --- |
 | Threads share one GLiNER model; `workers > 1` pins torch intra-op threads to 1 | [Segmentation](architecture/segmentation.md) | process-per-worker (one model copy each) for very large corpora |
 | Cached `.md` files have no `DoclingDocument` → markdown-heading fallback | [Segmentation](architecture/segmentation.md) | re-parse the PDF to get section-aware chunks |
-| Cross-document entity matching is lexical → inflates the novelty view | [Corpus](architecture/corpus.md) | semantic entity alignment is future work |
-| `TopicGraph.build` accumulates state → must be fresh per document | [Corpus](architecture/corpus.md) | `CorpusGraphBuilder` builds one per document |
 | CSV parsing not implemented | [Ingestion](architecture/ingestion.md) | `parse_csv` raises `NotImplementedError` |
-| GLiNER truncates long documents on the whole-document path | [Assembly](architecture/assembly.md) | use the segmented extractor (default) |
+| GLiNER truncates long documents when segmentation is disabled | [Assembly](architecture/assembly.md) | keep the segmented extractor enabled (default) |

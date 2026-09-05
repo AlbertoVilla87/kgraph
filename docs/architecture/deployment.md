@@ -28,7 +28,7 @@ Stage 0 in [pipelines](pipelines.md).
 
 The Terraform stack lives in `infra/terraform/` and creates:
 
-- **EC2 `t3.large`** (AL2023, Docker pre-installed via `user_data`)
+- **EC2 `t3.xlarge`** (4 vCPU / 16 GiB; AL2023, Docker pre-installed via `user_data`) — default del Terraform
 - **Elastic IP** (static public IPv4)
 - **Security group** (ports 80/443 open; port 22 closed)
 - **Wake Lambda** + function URL + auto-stop EventBridge scheduler
@@ -83,6 +83,13 @@ What it does:
 2. Copies `.env.example` → `.env` (edit if needed)
 3. Runs `docker compose pull` (falls back to local build if no ECR images)
 4. Starts services with `docker compose up -d`
+
+> **Ollama is required, not optional.** The backend's only analysis pipeline is
+> citation-guided discovery, which calls Qwen3 via Ollama. Compose gates the
+> container behind the `citation` profile, so deploy with
+> `docker compose up -d --profile citation` — without it the UI comes up healthy
+> but every analysis job fails (`ensure_ollama()` in the container cannot reach a
+> local Ollama).
 
 ### Verify
 
@@ -208,8 +215,7 @@ Or use the GitHub Actions deploy workflow — it does the same thing remotely.
 # Verify models are baked in:
 docker compose exec backend ls -lh /app/models/
 # Should show:
-#   gliner-relex-large-v0.5/   (~500 MB)
-#   all-MiniLM-L6-v2/          (~90 MB)
+#   gliner-relex-large-v0.5/   (~3.5 GB)
 ```
 
 ---
@@ -227,7 +233,7 @@ Common causes:
 | Symptom | Fix |
 |---|---|
 | `ModuleNotFoundError` | Image wasn't built from the right context. Rebuild: `docker compose build backend` |
-| `OOMKilled` | Instance too small for GLiNER + MiniLM. Upgrade to `t3.xlarge` (16 GiB) |
+| `OOMKilled` | Instance too small for GLiNER + Ollama. Confirm the instance is `t3.xlarge` (16 GiB); `t3.large` risks OOM on deep runs |
 | `HF_HUB_OFFLINE` error | Model not baked into image. Rebuild the image with `docker build` |
 | Healthcheck timeout | First start takes 2–3 min (model loading). Wait; check `docker compose logs -f backend` |
 
@@ -261,12 +267,12 @@ is served through nginx (port 80), not Vite dev server.
 
 | Resource | Monthly cost | Notes |
 |---|---|---|
-| EC2 `t3.large` | ~$25 | Running ~8h/day (on-demand model) |
+| EC2 `t3.xlarge` | ~$40 | Running ~8h/day (on-demand model) |
 | EIP | ~$3.60 | Charged while instance is stopped |
 | S3 + CloudFront | ~$1 | Static frontend, low traffic |
 | Lambda (wake) | ~$0 | < 1M invocations/mo |
 | ECR storage | ~$1 | ~1 GB images |
-| **Total** | **~$30/mo** | On-demand; ~$75/mo if always-on `t3.xlarge` |
+| **Total** | **~$45/mo** | On-demand ~8h/day; ~$120/mo if always-on `t3.xlarge`; `t3.large` (8 GiB) is ~half but risks OOM on `deep` runs |
 
 ---
 

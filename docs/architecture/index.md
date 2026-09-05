@@ -1,21 +1,20 @@
 # Architecture
 
-The pipeline builds a knowledge graph from a corpus of documents. It is a **discovery-driven GLiNER assembly**: the graph's taxonomy (entity and relation labels) is *discovered from the data itself*, deterministically and without an LLM, and then GLiNER extracts the final graph using exactly that taxonomy.
+The pipeline builds a knowledge graph from a corpus of research documents. It is a **citation-guided GLiNER assembly**: the seed paper's own references define what matters in the state of the art, a small local model (Qwen3) turns each citing context into a concept/relation taxonomy, and GLiNER extracts the final graph using exactly those labels — no hand-written labels.
 
 ## The pipeline at a glance
 
 ```mermaid
 flowchart LR
-    subgraph ING["Ingestion (docling)"]
-        A[(PDF / MD)] --> B[DocumentConverter]
-        B --> C[(DoclingDocument)]
+    subgraph ING["Ingestion"]
+        A[(Seed paper + references)] --> B["ar5iv HTML · docling · local files"]
+        B --> C[(full text per document)]
     end
-    subgraph DIS["Discovery (LLM-free)"]
-        C --> D[Section split by headings]
-        D -- per section --> E[Adaptive KeyBERT seeds]
-        D -- per section --> F[spaCy dependency relations]
-        E --> G[Topic-guided expansion BFS]
-        F --> G
+    subgraph DIS["Discovery (Qwen3 via Ollama)"]
+        C --> D[Parse bibliography]
+        D --> E[Find citing contexts<br/>author-year matching]
+        E --> F[Qwen extracts<br/>concepts + types + relations]
+        F --> G[Aggregate taxonomy<br/>count across references]
         G --> T[Taxonomy: entities + relations]
     end
     subgraph SEG["Segmentation"]
@@ -24,20 +23,22 @@ flowchart LR
         I --> J[Token-bounded segments + overlap]
     end
     subgraph EXT["Extraction (parallel)"]
-        T --> K[GLiNER per segment, threads]
+        T --> K[GLiNER per segment, threads<br/>per-document labels]
         J --> K
-        K --> L[Concatenate + merge entities/relations]
+        K --> L[Canonicalize + merge<br/>entities/relations]
     end
-    L --> M[(Final Knowledge Graph)]
+    subgraph CLS["Classification"]
+        L --> M[core · seed-only · refs-only]
+    end
+    M --> N[(Final Knowledge Graph)]
 ```
 
-The five stages:
+The pipeline stages:
 
-1. **Ingestion** — read documents (PDF / markdown / txt) and keep a structured `DoclingDocument` when available. Sources plug in behind a common `DataSource` interface. → [ingestion](ingestion.md)
-2. **Discovery** — per document section: Adaptive KeyBERT seeds the topics, spaCy derives relations from dependency trees, and a BFS grows the topic graph from the seeds. The discovered nodes and edges become the label taxonomy. → [discovery](discovery.md)
-3. **Assembly** — GLiNER extracts entities and relations using exactly the discovered taxonomy (underscore-joined labels); entities are normalized and near-duplicates merged. → [assembly](assembly.md)
+1. **Ingestion** — fetch the seed paper and its references (ar5iv HTML, docling-parsed PDFs, or a local folder), each document becomes a `RawDocument`. Sources plug in behind a common `DataSource` interface. → [ingestion](ingestion.md)
+2. **Discovery** — parse the seed's bibliography, find the citing contexts (author–year matching), and let Qwen3 (via Ollama) extract concepts, types, and relations from each context. Aggregated across references, these become the label taxonomy. → [discovery](discovery.md)
+3. **Assembly** — GLiNER extracts entities and relations using the discovered taxonomy (per-document labels, underscore-joined); entities are canonicalized and near-duplicates merged. → [assembly](assembly.md)
 4. **Segmentation** — long documents are split into section-aware, token-bounded segments and GLiNER runs over every segment in parallel, concatenating the results — beats GLiNER's 1024-token window. → [segmentation](segmentation.md)
-5. **Corpus merge** — scaling to a folder of documents: sequential per-document taxonomy + segmentation, then parallel extraction across all segments (thread pool), and a merged cross-document graph with a common/unique originality view. → [corpus](corpus.md)
 
 ## Module map
 
@@ -49,28 +50,23 @@ backend/src/kgraph/
 │   ├── local_files.py    #   LocalFileSource (txt/md/json/pdf from a folder)
 │   ├── arxiv.py          #   ArxivSource (arXiv API → RawDocument + PDF download)
 │   └── parsers/parsers.py#   docling-based PDF parsing (offline, HF_HUB_OFFLINE=1)
-├── discovery/            # stages 1–3 (LLM-free)
-│   ├── dependency_relations.py  #   DependencyRelationExtractor (spaCy)
-│   ├── topic_graph.py           #   TopicGraph (BFS expansion from seeds)
-│   ├── assembly.py              #   DiscoveryAssembly (discovery → GLiNER taxonomy)
-│   └── schemas.py               #   DiscoveredRelation, DiscoveryResult
-├── extractors/           # final extraction (stage 4)
-│   ├── key_bert.py       #   AdaptiveKeyBERT (seeds)
+├── discovery/            # stage 2
+│   ├── bibliography.py         #   parse References → entries (arXiv IDs, author–year)
+│   ├── citation_graph.py       #   Qwen discovery + taxonomy aggregation (+ ensure_ollama)
+│   └── citation_assembly.py    #   CitationAssembly (discovery → GLiNER → classification)
+├── extractors/           # final extraction (stage 3)
 │   ├── gliner.py         #   GLiNERGraph (add_entity/add_relation/find_entity)
 │   ├── normalization.py  #   canonical(), EntityMerger
+│   ├── model_cache.py    #   process-wide GLiNER single-load lock
 │   └── base.py
-├── segmentation/         # stage 5
+├── segmentation/         # stage 4
 │   ├── chunker.py        #   Segmenter (HierarchicalChunker + token budget + overlap)
 │   ├── extractor.py      #   SegmentedGraphExtractor (parallel GLiNER per segment)
 │   └── models.py
-├── corpus/               # stage 6
-│   ├── merge.py          #   CorpusGraphBuilder (per-doc taxonomies, common/unique)
-│   └── viz.py            #   interactive HTML export
 ├── graph/
 │   ├── models.py         #   Entity, Relation, RawDocument
 │   └── config.py         #   PipelineConfig (+ load/build_pipeline_config)
-├── ingestion/arxiv.py    # (arXiv source, see above)
-├── llms/                 # optional LLM route (qwen-demo only)
+├── llms/                 # LiteLLM Qwen client (citation discovery, structured output)
 │   ├── litellm_client.py #   LiteLLMClient (Ollama, structured output)
 │   └── schemas/concepts.py
 ├── retriever/            # GLiNER-based retrieval over the graph
@@ -79,18 +75,16 @@ backend/src/kgraph/
 
 ## Key design decisions
 
-- **Labels are discovered, not hand-written.** Both the entity and the relation taxonomy emerge from the document via deterministic dependency parsing. GLiNER is only the last stage.
-- **Discovery is LLM-free and deterministic.** A small local model (Qwen3 0.6b) hallucinated evidence during early exploration, so it was dropped from discovery entirely.
-- **One taxonomy per document (or per section).** Discovery runs per document section so the vocabulary stays faithful to the content instead of abstract-level boilerplate.
-- **Everything is local.** No paid per-token APIs; models run from a local `models/` cache.
+- **Labels are discovered, not hand-written.** Both the entity and the relation taxonomy emerge from the seed's own citations: Qwen reads each citing context and proposes concepts and relations, aggregated by frequency.
+- **One taxonomy per reference.** Each cited paper gets its own GLiNER label set based on what the seed highlights about it; the seed gets the union — sharper extraction than a single global taxonomy.
+- **Everything is local.** No paid per-token APIs; GLiNER comes from a local `models/` cache and Qwen3 runs on your machine via Ollama.
 
 ## Page index
 
 - [Ingestion](ingestion.md) — sources, parsers, and how documents become `RawDocument`s
-- [Discovery](discovery.md) — stages 1–3: Adaptive KeyBERT, spaCy relations, BFS expansion
-- [Assembly](assembly.md) — stage 4: the discovered taxonomy drives GLiNER; normalization and merging
-- [Segmentation](segmentation.md) — stage 5: beating the 1024-token window
-- [Corpus & multi-document](corpus.md) — stage 6: the cross-document originality view
+- [Discovery](discovery.md) — bibliography parsing, citing contexts, Qwen3 taxonomy — plus the legacy topic-guided (KeyBERT/spaCy) path, removed
+- [Assembly](assembly.md) — stage 3: the discovered taxonomy drives GLiNER; normalization and merging
+- [Segmentation](segmentation.md) — stage 4: beating the 1024-token window
 - [Data model & configuration](data-model.md) — `Entity`, `Relation`, `RawDocument`, and `params.yaml`
 - [Runtime & API architecture](runtime.md) — request lifecycle (job + polling), pipeline composition, concurrency
 - [Deployment](deployment.md) — target AWS architecture (design phase)

@@ -13,27 +13,17 @@ uv sync
 
 The pipeline is fully local. The `models/` directory is git-ignored; the paths are configured in `configs/params.yaml`.
 
-**Keywords extractor** (KeyBERT / sentence embeddings):
-
-```bash
-uv run hf download sentence-transformers/all-MiniLM-L6-v2 --local-dir models/all-MiniLM-L6-v2
-```
-
 **NER + relation extraction** (GLiNER):
 
 ```bash
 uv run hf download urchade/gliner_multi-v2.1 --local-dir models/gliner-relex-large-v0.5
 ```
 
-**SpaCy** (topic discovery) — download `en_core_web_sm` so the discovery stage is fully local:
+**Citation discovery** (Qwen3 via Ollama) — required for the concept/relation taxonomy that feeds GLiNER:
 
 ```bash
-curl -L -o /tmp/en_core_web_sm.whl \
-  https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
-unzip -o -q /tmp/en_core_web_sm.whl -d /tmp/en_core_web_sm_pkg
-mkdir -p models/en_core_web_sm
-cp -R /tmp/en_core_web_sm_pkg/en_core_web_sm/en_core_web_sm-3.8.0/. models/en_core_web_sm/
-rm -rf /tmp/en_core_web_sm.whl /tmp/en_core_web_sm_pkg
+brew install --cask ollama
+ollama pull qwen3:0.6b
 ```
 
 **Docling** (PDF parsing) — pulls the layout/table models into `models/hub/` so parsing works offline (`HF_HUB_OFFLINE=1`):
@@ -43,17 +33,18 @@ HUGGINGFACE_HUB_CACHE=models/hub uv run hf download docling-project/docling-layo
 HUGGINGFACE_HUB_CACHE=models/hub uv run hf download docling-project/docling-models
 ```
 
-> The LLM (Ollama + Qwen3 0.6b) is **optional** — discovery is deterministic (spaCy) and GLiNER runs locally. Only `qwen-demo` uses it.
+> The LLM (Ollama + Qwen3 0.6b) is **required**: citation discovery (the API, `citation-demo`, `qwen-demo`) uses it to extract and canonicalize the taxonomy from the seed's references. GLiNER and docling run fully locally; there are no paid per-token API calls.
 
 ## 3. Build your first graph
 
-The default corpus is `data/case_2/medium.txt` (a blog-style document on LLM reasoning):
+With Ollama running and Qwen3 pulled, run the **citation pipeline** (the production path — Qwen builds the taxonomy from a seed paper's references, GLiNER extracts, nodes get classified and canonicalized):
 
 ```bash
-uv run assembly-demo
+uv run citation-demo --seed 2404.16130
+# writes output/citation_kg.json (use --output for a custom path)
 ```
 
-This runs discovery → segmented GLiNER extraction and prints the final graph with scores and occurrence counts, writing it to `output/kg_final.json`. Render it as an interactive HTML:
+Render the result as an interactive HTML:
 
 ```bash
 uv run graph-viz output/kg_final.json
@@ -83,9 +74,8 @@ uv run uvicorn kgraph.api.main:app --reload --port 8000
 
 | Goal | Command |
 | --- | --- |
-| Compare several documents (common vs. unique) | `uv run corpus-demo` |
 | Harvest papers from arXiv | `uv run arxiv-demo --query '"LLM agents"' --max-results 10` |
-| Control segmentation explicitly | `uv run segmented-demo --show-segments` |
+| See the production pipeline on a seed paper | `uv run citation-demo --seed 2404.16130` |
 | See every CLI entry point | [Demos](demos.md) |
 
 Full setup and usage details: [Architecture](architecture/index.md), [Data model & configuration](architecture/data-model.md).

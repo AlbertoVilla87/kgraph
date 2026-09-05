@@ -48,10 +48,6 @@ topic search (arXiv/IEEE) → concept extraction → relation extraction → acc
 
 The user-facing loop is powerful and cheap: because GLiNER is zero-shot, **any topic that occurs to the user becomes a label** and we can ask directly "does this idea appear in any document of the corpus, and how is it connected?" — a live originality check against the state of the art, plus the graph shows which related ideas exist around it.
 
-Multi-document view of a corpus (`uv run corpus-demo` in `backend/`): every node/edge is labeled **common** (present in ≥2 documents, green) or **unique** to one document (originality view):
-
-<img src="assets/multi_graph.jpg" alt="Multi-document corpus graph" width="100%">
-
 ### What "not new" looks like
 
 | Case | Node (concept) | Edge (relation) | Interpretation |
@@ -91,16 +87,13 @@ Features:
 - GLiNER is loaded **once** from a process-wide cache and shared across every document/segment (no reload between analyses)
 - Nodes are classified **core / seed-only / refs-only** as a cheap originality proxy
 
-**Concept (entity) extraction**
-- Adaptive KeyBERT → candidate topic seeds per document (adaptive count via score elbow)
-- Topic-guided expansion (spaCy dependency parsing, LLM-free) → grows the seeds into a graph of topics and relations
-- GLiNER → zero-shot entity + relation extraction using exactly those discovered topics/relations as labels (underscore-joined), with confidence scores
+**Concept (entity) and relation extraction**
+- Qwen (via Ollama) reads each citing context of the seed paper and proposes concepts — each with a `canonical` form and semantic `type` — plus relation phrases; these aggregate into the GLiNER taxonomy
+- Per-document labels: each reference gets its own label set from what the seed highlights; the seed gets the union — sharper extraction than a single global taxonomy
+- GLiNER → zero-shot entity + relation extraction using exactly those discovered labels (underscore-joined), with confidence scores
 - Entity normalization & merging (`normalization.py`) collapses near-duplicates (`canonical`, token containment) before the final graph
-
-**Relation extraction**
-- spaCy dependency parsing (verb lemma + preposition, e.g. `obtained from`) → candidate relation phrases
-- Kept only when an endpoint touches a known topic; new endpoints become topics to expand, up to `max_depth`
-- GLiNER extracts the final relations between the extracted entities using the discovered relation labels, with confidence scores
+- Nodes are classified **core / seed-only / refs-only** as a cheap originality proxy
+- Segmentation splits long documents into section-aware, token-bounded segments so GLiNER never exceeds its 1024-token window
 
 **Accumulated graph & originality/gap signals** (planned)
 - Weisfeiler-Lehman (WL) kernel, structural invariants, and/or semantic embedding similarity to score how much a new mini-graph diverges structurally from the accumulated topic graph
@@ -109,9 +102,9 @@ Features:
 
 ## Constraints / design choices
 
-- No paid per-token LLM APIs in the pipeline; local/open models only (GLiNER — Apache 2.0; spaCy — MIT)
-- Labels (both entity and relation types) are discovered from the data via deterministic dependency parsing, not hand-defined
-- Discovery is deterministic and LLM-free (a small local model hallucinated evidence, so it was dropped from discovery)
+- No paid per-token LLM APIs in the pipeline; local/open models only (GLiNER — Apache 2.0; Qwen3 0.6b — Apache 2.0; docling — MIT)
+- Labels (both entity and relation types) are discovered from the seed paper's references by Qwen3, not hand-defined
+- Discovery is citation-guided and runs locally: Qwen reads each citing context and derives concepts/types/relations, aggregated into the taxonomy GLiNER extracts with
 - One accumulated graph per topic, growing over time as new content is processed — the comparison only gets more meaningful as the corpus grows
 
 ## Quick start
@@ -128,11 +121,11 @@ Open `http://localhost:5173`.
 
 ## Status
 
-Implemented: the **arXiv harvester** (`arxiv-demo`, abstracts or full text), Adaptive KeyBERT seeding, LLM-free topic-guided discovery (spaCy), the discovery-driven GLiNER assembly that builds the final knowledge graph (with **section-aware segmentation** beating the 1024-token window), and the **citation-guided discovery** path (seed → references → Qwen taxonomy → GLiNER) exposed through the API. Full text for the citation path is fetched fast from **ar5iv HTML** with parallel reference resolution. Current default corpus: `backend/data/case_2/medium.txt`.
+Implemented: the **arXiv harvester** (`arxiv-demo`, abstracts or full text via PDF + docling, plus the fast **ar5iv HTML** path), **citation-guided discovery** — seed → references → Qwen3 taxonomy → canonicalization → per-document GLiNER extraction → core / seed-only / refs-only classification — exposed through the API (`citation-demo`), and **section-aware segmentation** beating the 1024-token window. References are resolved in parallel (up to 8 workers).
 
 Still open:
 - **Source feed**: IEEE (and similar) harvesters are not implemented; the pipeline can read a local folder (`data_source` in `params.yaml`) or fetch from arXiv (`data_source.type: arxiv`).
-- **Accumulated graph**: nodes/edges accumulate per topic across documents; today each run builds a fresh graph from one corpus.
+- **Accumulated graph**: nodes/edges accumulate per topic across documents; today each run builds a fresh graph from one seed paper.
 - **Originality/gap signals**: the WL-kernel / embedding comparison against an accumulated topic graph, and the GLiNER zero-shot idea check, are designed but not yet implemented.
 - **Granularity**: too fine-grained and everything looks "new"; too coarse and nothing ever registers as novel. Will likely need iteration once there's real data flowing through.
 - **Scope of the accumulated graph**: per topic, per author, or both? An originality score per author (% of their output that maps to already-seen nodes/edges) is an interesting downstream product on top of the same graph.

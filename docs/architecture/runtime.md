@@ -71,10 +71,9 @@ There is **no streaming** (no SSE / WebSocket) today. See §4 for the gaps.
 
 Two very different execution domains:
 
-- **In-process (same Python process as FastAPI):** the local models —
-  GLiNER (`models/gliner-relex-large-v0.5`), MiniLM (`models/all-MiniLM-L6-v2`)
-  and spaCy (`en_core_web_sm`) — run inside the uvicorn worker via
-  torch / sentence-transformers. Their (heavy) load is serialized behind a
+- **In-process (same Python process as FastAPI):** the local GLiNER model
+  (`models/gliner-relex-large-v0.5`) runs inside the uvicorn worker via torch.
+  Its (heavy) load is serialized behind a
   global lock (`backend/src/kgraph/extractors/model_cache.py:3`).
 - **Network (separate services, HTTP):** inference for the LLM route goes to
   **Ollama** at `http://localhost:11434` through LiteLLM
@@ -87,8 +86,6 @@ flowchart TB
         R["POST /api/analysis/analyze<br/>(sync def + daemon worker thread)"]
         M["Model cache<br/>threading.Lock (single load)"]
         G["GLiNER relex-large v0.5<br/>torch (CPU)"]
-        S["all-MiniLM-L6-v2<br/>entity merging"]
-        P["spaCy en_core_web_sm"]
         ST["State dict<br/>analyses[id]"]
     end
 
@@ -100,17 +97,15 @@ flowchart TB
     R --> ST
     R --> M
     M --> G
-    M --> S
-    M --> P
     R -->|"litellm · timeout 120 s"| O
     R -->|"httpx · timeout 30/60 s"| A
 ```
 
 Key facts:
 
-- **Qwen3 + Ollama is the only network inference.** Everything else is local
-  and LLM-free. `ensure_ollama()` even auto-launches `ollama serve` when it is
-  not running (`backend/src/kgraph/discovery/citation_graph.py:76`).
+- **Qwen3 + Ollama is the only network inference.** GLiNER runs locally;
+  `ensure_ollama()` even auto-launches `ollama serve` when it is not running
+  (`backend/src/kgraph/discovery/citation_graph.py:76`).
 - Reference fetching is parallelized with `ThreadPoolExecutor(max_workers=min(8, n))`
   (`runner.py:415`); the **models are not** multi-worker.
 - Memory/GPU hygiene happens at the end of a run: `gc.collect()`,
@@ -186,8 +181,8 @@ queues concurrent requests internally and is safe under concurrency.
 ## 5. Latency
 
 The API adds no timing logs or metrics. The only measured numbers come from
-the CLI corpus demo (`backend/reports/corpus_timing_2d91bd8.json`, deep mode,
-5 local PDFs, macOS — see [`reports/corpus_timing.ipynb`](../reports/corpus_timing.ipynb)):
+the (removed) corpus demo — `backend/reports/corpus_timing_2d91bd8.json`
+(5 local PDFs, macOS; see [`reports/corpus_timing.ipynb`](../reports/corpus_timing.ipynb)):
 
 | Phase | Time (deep, 5 PDFs, local) |
 | --- | --- |

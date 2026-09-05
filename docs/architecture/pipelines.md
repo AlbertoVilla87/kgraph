@@ -9,7 +9,7 @@
 > **execution**: apply Terraform, create ECR repos / OIDC roles, ECR login on the
 > EC2, first release.
 > Decisions locked in: **OIDC** auth from CI, **models baked into the image**
-> (no spaCy), **SSM Run Command** to deploy, **manual/`workflow_dispatch`** deploy
+> (GLiNER only), **SSM Run Command** to deploy, **manual/`workflow_dispatch`** deploy
 > trigger, **git tag → build** trigger, **Terraform** to provision the EC2.
 > Follow the operational steps in the [Deployment Runbook](deployment.md).
 
@@ -52,7 +52,7 @@ kgraph/
 ├── frontend/Dockerfile   # multi-stage: vite build → nginx (dist/ + proxy /api)
 ├── docker/
 │   └── nginx.conf        # SPA y proxy_pass /api → backend:8000
-├── docker-compose.yml    # fuente de verdad: nginx + backend (+ ollama opcional)
+├── docker-compose.yml    # fuente de verdad: nginx + backend (+ ollama tras el perfil `citation` — el API lo requiere para analizar)
 ├── .env.example          # plantilla (same compose vale para local y EC2)
 ├── .env                  # gitignored — real sobre el EC2
 └── scripts/ec2-provision.sh  # bootstrap único del host (docker, dirs, ~/kgraph)
@@ -64,9 +64,9 @@ Key choices encoded here:
   file runs against the EC2 (via `git pull` on the repo clone) and locally
   during development, keeping parity.
 - **Models baked in the image** (`backend/Dockerfile` downloads GLiNER (`urchade/gliner_multi-v2.1`)
-  and MiniLM/sentence-transformers, then sets `HF_HUB_OFFLINE=1`) — reproducible
-  large image, no EBS model dependency. **spaCy is NOT included** (no longer used
-  in the pipeline).
+  then sets `HF_HUB_OFFLINE=1`) — reproducible
+  large image, no EBS model dependency. **spaCy and MiniLM are NOT included**
+  (no longer used in the pipeline).
 - **PDFs are not persisted**: `data/` is an ephemeral per-run directory inside
   the backend container, discarded after each analysis — no EBS data volume.
   The EC2 is nearly disposable (rebuild = clone + compose up + pull images).
@@ -99,7 +99,7 @@ Resources the full plan creates (✅ = already in the first slice):
 
 | Resource | ✅ | Notes |
 |---|---|---|
-| **EC2 `t3.large` (first slice) / `t3.xlarge` (full)** | ✅ | AL2023 AMI; `user_data` installs Docker; root EBS `gp3` (~30 GiB, encrypted) — **no data volume** (PDFs ephemeral) |
+| **EC2 `t3.xlarge`** (default) | ✅ | AL2023 AMI; `user_data` installs Docker; root EBS `gp3` (~30 GiB, encrypted) — **no data volume** (PDFs ephemeral) |
 | **Elastic IP** | ✅ | static public IPv4; ~`$3.6/mo` while the VM is stopped |
 | **Security group** | ✅ | inbound 443 (nginx TLS) + 80 (HTTP demo), **22 closed** |
 | **Instance profile** | ✅ | `AmazonSSMManagedInstanceCore` so SSM works |
@@ -221,7 +221,7 @@ jobs:
 ```
 
 > **Note:** the first-time ECR push includes models baked into the image
-> (GLiNER ~2.5 GB, MiniLM ~90 MB). Expect the build to take several minutes and
+> (GLiNER ~2.5 GB). Expect the build to take several minutes and
 > the resulting image to be large — use `docker buildx` cache (as above) to
 > speed up rebuilds.
 

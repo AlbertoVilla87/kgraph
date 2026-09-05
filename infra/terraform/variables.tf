@@ -11,9 +11,9 @@ variable "project" {
 }
 
 variable "instance_type" {
-  description = "t3.large (quick) o t3.xlarge (deep + Ollama)."
+  description = "t3.xlarge (por defecto; GLiNER-large + Ollama). Baja a t3.large solo para pruebas rápidas sin Ollama."
   type        = string
-  default     = "t3.large"
+  default     = "t3.xlarge"
 }
 
 variable "root_volume_size_gb" {

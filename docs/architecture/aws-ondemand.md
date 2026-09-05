@@ -32,7 +32,7 @@ flowchart LR
         Browser --> CF["CloudFront"] --> S3["S3 bucket (SPA)"]
     end
     subgraph Backend["on-demand (billed only while running)"]
-        Wake["wake Lambda (URL)"] -->|StartInstances| EC2["EC2 t3.large"]
+        Wake["wake Lambda (URL)"] -->|StartInstances| EC2["EC2 t3.xlarge"]
         EC2 -->|"running"| Wake
         Wake -->|CreateSchedule| Sched["Scheduler one-shot"]
         Sched -->|after N h| Stop["StopInstances"]
@@ -52,15 +52,15 @@ line item that moves the needle. Approximate on-demand prices in eu-north-1:
 
 | Instance | RAM | $/h | `$200` ≈ hours | Always on | On-demand use |
 |---|---|---|---|---|---|
-| `t3.large` | 8 GiB | ~0.086 | ~2,300 h | ~96 days | **months–years** |
-| `t3.xlarge` (the deployment.md default) | 16 GiB | ~0.17 | ~1,160 h | ~48 days | months |
+| `t3.xlarge` (default) | 16 GiB | ~0.168 | ~1,190 h | ~50 days | **months–years** |
+| `t3.large` | 8 GiB | ~0.086 | ~2,300 h | ~96 days | months–years |
 | `t3.large` **Spot** *(test only)* | 8 GiB | ~0.031 | ~6,500 h | ~9 months | years |
 
 Two levers dominate:
 
-1. **Right-size per scenario.** `t3.large` handles moderate workloads;
-   `t3.xlarge` is needed for `deep` + citation + Ollama. The Terraform exposes
-   `instance_type` so you switch with one `apply`.
+1. **Right-size per scenario.** `t3.xlarge` is the default (GLiNER-large + Ollama fit
+   comfortably); drop to `t3.large` only for quick, RAM-light runs. The Terraform
+   exposes `instance_type` so you switch with one `apply`.
 2. **Duty cycle.** A VM that is off 95% of the time costs ~5% of its always-on
    price. The wake/auto-stop mechanism exists purely to make that duty cycle
    automatic instead of a memory chore.
@@ -72,7 +72,7 @@ is unacceptable, so the default stack is on-demand. Spot is a good cheap option 
 for scheduled, non-interactive test runs.
 
 **Budget hygiene** (each is a small recurring cost that erodes the pool even at zero
-usage — a useful mental model: an always-on t3.large burns ~$2/day of the pool):
+usage — a useful mental model: an always-on t3.xlarge burns ~$4/day of the pool):
 
 | Item | Cost while backend stopped |
 |---|---|
@@ -243,7 +243,7 @@ and `aws_caller_identity` (your account number) are all reads, not creations.
 **Variables / locals / outputs.**
 
 ```hcl
-variable "instance_type"   { default = "t3.large" }   # user knob (tfvars)
+variable "instance_type"   { default = "t3.xlarge" }  # user knob (tfvars)
 local.wake_function_name                               # computed, reused
 output "wake_url" { … }                                # printed after apply; curl $(terraform output -raw wake_url)
 ```
@@ -311,16 +311,17 @@ again a minute later — the stack is idempotent. To watch the machinery:
 - The Lambda's stdout/stderr land in **CloudWatch → Log groups** ⇒
   `/aws/lambda/kgraph-astrolabe-wake` (7-day retention).
 
-Switching instance size for a heavy `deep` run: edit `terraform.tfvars`
-(`instance_type = "t3.xlarge"`) then `apply` (instance is replaced; EIP is carried).
+Switching instance size for a light run: edit `terraform.tfvars`
+(`instance_type = "t3.large"`) then `apply` (instance is replaced; EIP is carried).
+The default stays `t3.xlarge`.
 
 ## Worked cost scenarios on the `$200`
 
 | Scenario | Result |
 |---|---|
+| t3.xlarge always on | ~50 days |
 | t3.large always on | ~96 days, then empty |
-| t3.xlarge always on | ~48 days |
-| on-demand demo: 1 h/day | $200 ÷ (0.086 · 1h + ~0.2/mo floor) ≈ years |
+| on-demand demo: 1 h/day (`t3.xlarge`) | $200 ÷ (0.168 · 1h + ~0.2/mo floor) ≈ years |
 | one 3 h `deep` run every few days | effectively unbounded within the period |
 
 The takeaway: this pattern turns a "2-day cloud" into a "months/years cloud" purely
