@@ -1,6 +1,8 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Bell, Plus, ArrowUpRight, Compass } from 'lucide-react';
+import { Bell, Plus, ArrowUpRight, Compass, Github } from 'lucide-react';
+
+const REPO_URL = 'https://github.com/AlbertoVilla87/kgraph';
 
 const notifications = [
   {
@@ -55,9 +57,16 @@ export default function Layout() {
         <button className="w-11 h-11 flex items-center justify-center rounded-xl text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-3)] transition-colors" title="Help">
           <ArrowUpRight size={19} strokeWidth={1.8} />
         </button>
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-violet)] to-[var(--color-rose)] flex items-center justify-center text-xs font-semibold text-white">
-          AV
-        </div>
+        <a
+          href={REPO_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Repository"
+          aria-label="Repository"
+          className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-violet)] to-[var(--color-rose)] flex items-center justify-center text-xs font-semibold text-white hover:opacity-85 transition-opacity"
+        >
+          <Github size={18} strokeWidth={1.9} />
+        </a>
       </aside>
 
       {/* ---------- Main column ---------- */}
