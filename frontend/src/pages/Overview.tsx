@@ -53,7 +53,7 @@ interface AnalysisResult {
 interface UserTopic {
   id: string;
   name: string;
-  status: 'found' | 'partial' | 'not_found';
+  status: 'searching' | 'found' | 'partial' | 'not_found';
 }
 
 interface EntityRelation {
@@ -83,12 +83,6 @@ interface EntitySearchResult {
   documents?: string[];
   query?: string;
 }
-
-const mockUserTopics: UserTopic[] = [
-  { id: '1', name: 'Few-shot Learning', status: 'found' },
-  { id: '2', name: 'Graph Neural Networks', status: 'partial' },
-  { id: '3', name: 'Quantum Computing', status: 'not_found' },
-];
 
 export default function Overview() {
   // Restore the last completed analysis from localStorage so refreshing the
@@ -121,7 +115,7 @@ export default function Overview() {
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(() => loadStoredResult());
   const [error, setError] = useState<string | null>(null);
-  const [userTopics, setUserTopics] = useState<UserTopic[]>(mockUserTopics);
+  const [userTopics, setUserTopics] = useState<UserTopic[]>([]);
   const [newTopic, setNewTopic] = useState('');
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [extraNodes, setExtraNodes] = useState<GraphNode[]>(() => loadExtras().nodes);
@@ -212,7 +206,7 @@ export default function Overview() {
 
     setSearching(true);
     setSearchMessage(null);
-    setUserTopics((prev) => [...prev, { id: String(Date.now()), name: topic, status: 'not_found' }]);
+    setUserTopics((prev) => [...prev, { id: String(Date.now()), name: topic, status: 'searching' }]);
 
     fetch(`${API_BASE}/graph/${analysisResult.id}/entity-search`, {
       method: 'POST',
@@ -228,6 +222,7 @@ export default function Overview() {
       })
       .catch((e) => {
         setSearchMessage(e instanceof Error ? e.message : 'Search failed');
+        setUserTopics((prev) => prev.map((t) => (t.name === topic ? { ...t, status: 'not_found' } : t)));
       })
       .finally(() => setSearching(false));
   };
@@ -739,12 +734,20 @@ function TopicDock({
                       ? 'bg-[var(--color-success)]'
                       : topic.status === 'partial'
                         ? 'bg-[var(--color-warning)]'
-                        : 'bg-[var(--color-error)]'
+                        : topic.status === 'searching'
+                          ? 'bg-[var(--color-primary)] animate-pulse'
+                          : 'bg-[var(--color-error)]'
                   }`}
                 />
                 <span className="text-[13px] truncate flex-1">{topic.name}</span>
-                <span className="text-[10px] font-mono uppercase tracking-wide text-[var(--color-text-faint)]">
-                  {topic.status.replace('_', ' ')}
+                <span
+                  className={`text-[10px] font-mono uppercase tracking-wide ${
+                    topic.status === 'searching'
+                      ? 'text-[var(--color-primary)] animate-pulse'
+                      : 'text-[var(--color-text-faint)]'
+                  }`}
+                >
+                  {topic.status === 'searching' ? 'searching' : topic.status.replace('_', ' ')}
                 </span>
                 <button onClick={() => onRemove(topic.id)} className="p-0.5 text-[var(--color-text-faint)] hover:text-[var(--color-text)] rounded">
                   <X size={12} />
