@@ -3,6 +3,10 @@
 An instrument that maps the state of the art of any research topic as a knowledge graph — and points at what is original and what is missing.
 
 ![ArXiv Graph Explorer — frontend skeleton](docs/assets/app_skeleton.png)
+*Figure 1 — the frontend: ArXiv Graph Explorer (React + Cytoscape.js) visualizes the knowledge graph interactively.*
+
+![Astrolabe pipeline — functional flow, 100% local](docs/assets/pipeline.png)
+*Figure 2 — the solution's pipeline at a functional level: ingest → discover taxonomy → segment → GLiNER assembly → knowledge graph. No paid token APIs.*
 
 > **Full technical docs:** the docs are their own project at the repo root (see `pyproject.toml`). Build and browse with `uv sync && uv run mkdocs serve`, or read the sources under [`docs/`](docs/).
 
@@ -115,6 +119,9 @@ ever leaves the VPC. It is **not** the cheapest choice at low scale, and we say 
 simulation against per-call APIs
 ([exp_05_token_cost_simulation.ipynb](backend/experiments/exp_05_token_cost_simulation.ipynb))
 reaches these conclusions:
+
+![Local box vs pay-per-call APIs — cost infographic](docs/assets/wheel.png)
+*Figure 3 — at a glance: the cost crossover between keeping a 24/7 local `t3.xlarge` and a small machine + external tokens.*
 
 - **The box only pays at volume.** With both sides on 24/7, the xlarge's ~$118/mo premium over a
   `t3.micro` + paid APIs breaks even at ~46 analyses/mo on frontier models (GPT-class) or ~1,750
