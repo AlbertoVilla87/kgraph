@@ -31,7 +31,6 @@ theme:
 
 nav:
   - Home: index.md
-  - Overview: overview.md
   - Quickstart: quickstart.md
   - Architecture:
       - architecture/index.md
@@ -42,20 +41,22 @@ nav:
       - Data model & configuration: architecture/data-model.md
       - Runtime & API architecture: architecture/runtime.md
       - Application architecture: architecture/app-architecture.md
-      - Deployment: architecture/deployment.md
+  - Deployment:
+      - architecture/deployment.md
       - CI/CD & AWS bootstrap: architecture/pipelines.md
       - AWS on-demand deployment: architecture/aws-ondemand.md
   - Demos: demos.md
   - Experiments:
       - experiments/index.md
       - Qwen vs. KeyBERT: experiments/exp_02_qwen_versus_keybert.ipynb
-  - Roadmap: roadmap.md
   - Reports:
       - reports/index.md
       - Corpus pipeline timing: reports/corpus_timing.ipynb
-  - Development / Tooling: development.md
-  - References: references.md
-  - Troubleshooting: troubleshooting.md
+  - More:
+      - Roadmap: roadmap.md
+      - Development / Tooling: development.md
+      - References: references.md
+      - Troubleshooting: troubleshooting.md
 
 markdown_extensions:
   - admonition
