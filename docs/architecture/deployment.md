@@ -274,6 +274,13 @@ is served through nginx (port 80), not Vite dev server.
 | ECR storage | ~$1 | ~1 GB images |
 | **Total** | **~$45/mo** | On-demand ~8h/day; ~$120/mo if always-on `t3.xlarge`; `t3.large` (8 GiB) is ~half but risks OOM on `deep` runs |
 
+> **Is this box even needed?** A self-critical cost audit — [exp_05 token cost simulation](../../backend/experiments/exp_05_token_cost_simulation.ipynb) —
+> compares this always-on `t3.xlarge` (GLiNER + Qwen3/Ollama, CPU-only) against a `t3.micro` that
+> calls paid APIs per analysis. Conclusion (both machines 24/7): the box only justifies its
+> ~$118/mo premium over the API path once traffic passes **~46 analyses/mo on frontier models
+> (GPT-6 Astra) or ~1,750 analyses/mo on cheap models (Flash-Lite/Luna) — roughly 5–175 concurrent
+> users at 10 analyses/user/mo**. Below that band, a tiny instance + tokens is cheaper and simpler.
+
 ---
 
 ## 7 — File Map

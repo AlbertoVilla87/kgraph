@@ -107,6 +107,34 @@ Features:
 - Discovery is citation-guided and runs locally: Qwen reads each citing context and derives concepts/types/relations, aggregated into the taxonomy GLiNER extracts with
 - One accumulated graph per topic, growing over time as new content is processed — the comparison only gets more meaningful as the corpus grows
 
+## Cost reality check (self-critical)
+
+The "local-only LLM" constraint — no per-token APIs, everything on a single `t3.xlarge`
+(4 vCPU / 16 GiB, CPU-only) with GLiNER + Qwen3 via Ollama — is a **product** choice: no document
+ever leaves the VPC. It is **not** the cheapest choice at low scale, and we say so out loud. A cost
+simulation against per-call APIs
+([exp_05_token_cost_simulation.ipynb](backend/experiments/exp_05_token_cost_simulation.ipynb))
+reaches these conclusions:
+
+- **The box only pays at volume.** With both sides on 24/7, the xlarge's ~$118/mo premium over a
+  `t3.micro` + paid APIs breaks even at ~46 analyses/mo on frontier models (GPT-class) or ~1,750
+  analyses/mo on cheap models (Gemini Flash-Lite-class) — roughly **5–175 concurrent users** at 10
+  analyses/user/mo. Below that band the API path is cheaper *and* simpler.
+- **We sized by memory, not load.** `t3.large` OOMs on GLiNER's 3.5 GB model + torch, which is why
+  we stepped up to 16 GiB; the extra 4 vCPUs sit mostly idle because the expensive loops (Qwen per
+  reference, GLiNER per document) run sequentially.
+- **The bottleneck estimate is unmeasured.** `JOB_MINUTES≈10` is an assumption — the repo has no
+  timing instrumentation, so every crossover above scales linearly with that number.
+- **Rate limits make the cheap API path impractical at scale** (GPT-5.6 Tier-1 ≈ 200 analyses/day;
+  free Gemini ≈ 62/day) — exactly the region where the flat local box genuinely wins.
+
+Why we still run local: privacy (data never leaves the VPC), flat cost on sustained load, and
+frontier-grade extraction (Qwen3 + GLiNER) at ~$0 marginal per analysis. The pragmatic next step is
+not "buy a bigger box": instrument the pipeline, run the API tier from a `t3.micro` while traffic is
+low, and keep local inference as an opt-in offline profile.
+
+See [deployment.md](docs/architecture/deployment.md) §6 for the runbook and running costs.
+
 ## Quick start
 
 ```bash
