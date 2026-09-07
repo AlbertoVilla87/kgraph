@@ -26,6 +26,13 @@ dependencies = [
     "uvicorn>=0.32.0",
     "markdownify>=1.2.3",
 ]
+
+[dependency-groups]
+research = [
+    "google-genai>=1.0.0",
+    "seaborn>=0.13",
+    "tiktoken>=0.9.0",
+]
 [project.scripts]
 gliner-demo = "kgraph.cli.gliner_graph_demo:main"
 qwen-demo = "kgraph.cli.qwen_demo:main"
